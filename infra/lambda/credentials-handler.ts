@@ -9,10 +9,22 @@ import {
   TooManyRequestsException,
 } from "@aws-sdk/client-cognito-identity-provider";
 import { CloudWatchClient, PutMetricDataCommand } from "@aws-sdk/client-cloudwatch";
+import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";
 import { provisionCredentials } from "../../app/src/auth/credentials.js";
 
 const cognito = new CognitoIdentityProviderClient({});
 const cloudwatch = new CloudWatchClient({});
+const secretsManager = new SecretsManagerClient({});
+
+// CloudFormation dynamic references ({{resolve:secretsmanager:...}}) are NOT resolved in custom
+// resource properties (AWS docs: "Dynamic references can't be used for secure values ... in
+// custom resources") — passing a secret's value directly as a property silently passes the
+// literal unresolved token string instead. The stack passes ARNs; this fetches the real values.
+async function fetchSecret(secretArn: string): Promise<string> {
+  const res = await secretsManager.send(new GetSecretValueCommand({ SecretId: secretArn }));
+  if (!res.SecretString) throw new Error(`secret ${secretArn} has no SecretString`);
+  return res.SecretString;
+}
 
 async function withBackoff<T>(fn: () => Promise<T>): Promise<T> {
   let delay = 200;
@@ -74,7 +86,13 @@ async function runProvisioning(count: number, seed: string, userPoolId: string) 
 
 interface CfnRequest {
   RequestType: "Create" | "Update" | "Delete";
-  ResourceProperties: { UserPoolId: string; Seed: string; ParticipantCount: string };
+  ResourceProperties: {
+    UserPoolId: string;
+    SeedArn: string;
+    ParticipantCount: string;
+    AdminUsername: string;
+    AdminPasswordArn: string;
+  };
 }
 
 export async function handler(event: CfnRequest) {
@@ -83,8 +101,23 @@ export async function handler(event: CfnRequest) {
     return { PhysicalResourceId: "credentials-provider" };
   }
 
-  const { UserPoolId, Seed, ParticipantCount } = event.ResourceProperties;
+  const { UserPoolId, SeedArn, ParticipantCount, AdminUsername, AdminPasswordArn } = event.ResourceProperties;
   const count = Number(ParticipantCount);
+  const [seed, adminPassword] = await Promise.all([fetchSecret(SeedArn), fetchSecret(AdminPasswordArn)]);
+
+  // The one operator account. Always set the password to match the current secret value —
+  // unlike participants (many, derived, never meant to change once handed out), there's exactly
+  // one of these, so keeping it in sync with whatever's in Secrets Manager (e.g. after a manual
+  // rotation) is more useful than "idempotent forever."
+  if (await userExists(UserPoolId, AdminUsername)) {
+    await withBackoff(() =>
+      cognito.send(
+        new AdminSetUserPasswordCommand({ UserPoolId, Username: AdminUsername, Password: adminPassword, Permanent: true }),
+      ),
+    );
+  } else {
+    await createUser(UserPoolId, AdminUsername, adminPassword);
+  }
 
   // ponytail: a plain sequential-with-retry loop, not Step Functions Map — this is one Lambda
   // invocation reused on every re-run (Create on first deploy, Update on `cdk deploy` again
@@ -93,7 +126,7 @@ export async function handler(event: CfnRequest) {
   // Lambda's 15-min cap. If AdminCreateUser exhausts its backoff and throws, the whole
   // invocation fails, CFN reports the failure, and the next `cdk deploy` retries from scratch —
   // idempotent, so nothing already created gets duplicated or lost.
-  const result = await runProvisioning(count, Seed, UserPoolId);
+  const result = await runProvisioning(count, seed, UserPoolId);
 
   // Every index 0..count-1 is either newly created or already existed, so created+skipped
   // equals `count` on a successful run — this metric exists to catch the failure case where

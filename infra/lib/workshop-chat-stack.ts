@@ -71,7 +71,9 @@ export class WorkshopChatStack extends Stack {
     const mediaBucket = new s3.Bucket(this, "MediaBucket", { ...bucketProps, cors: [
       { allowedMethods: [s3.HttpMethods.PUT], allowedOrigins: ["*"], allowedHeaders: ["*"] },
     ] });
-    const guideBucket = new s3.Bucket(this, "GuideBucket", bucketProps);
+    const guideBucket = new s3.Bucket(this, "GuideBucket", { ...bucketProps, cors: [
+      { allowedMethods: [s3.HttpMethods.PUT], allowedOrigins: ["*"], allowedHeaders: ["*"] },
+    ] });
     const exportsBucket = new s3.Bucket(this, "ExportsBucket", bucketProps);
 
     new s3deploy.BucketDeployment(this, "GuideDeployment", {
@@ -101,6 +103,7 @@ export class WorkshopChatStack extends Stack {
     // appears in the stack template or CloudFormation console.
     const credentialSeed = new secretsmanager.Secret(this, "CredentialSeed", {
       generateSecretString: { excludePunctuation: true, passwordLength: 40 },
+      removalPolicy: RemovalPolicy.DESTROY, // §3: no resource may outlive the 3-day account
     });
 
     // The one operator account. Unlike participants (derived from credentialSeed, many of them,
@@ -111,9 +114,12 @@ export class WorkshopChatStack extends Stack {
     const operatorPassword = new secretsmanager.Secret(this, "OperatorPassword", {
       generateSecretString: {
         passwordLength: 20,
-        excludeCharacters: '"@/\\\'` ',
+        // no quotes/backslash/@ (breaks JSON/shell/ARN copy-paste), no comma (breaks the AWS
+        // CLI's key=val,key=val shorthand parsing if anyone pastes this into --auth-parameters)
+        excludeCharacters: '"@/\\\'`, ',
         requireEachIncludedType: true, // Cognito's default password policy needs all four classes
       },
+      removalPolicy: RemovalPolicy.DESTROY, // §3: no resource may outlive the 3-day account
     });
 
     // ---------- Knowledge Base (S3 Vectors) — optional, region-gated ----------
@@ -141,11 +147,17 @@ export class WorkshopChatStack extends Stack {
     });
     table.grantReadWriteData(taskRole);
     mediaBucket.grantReadWrite(taskRole);
-    guideBucket.grantRead(taskRole);
+    guideBucket.grantReadWrite(taskRole); // operator console manages guide docs (upload/toggle/delete)
     exportsBucket.grantReadWrite(taskRole);
     taskRole.addToPolicy(
       new iam.PolicyStatement({
-        actions: ["bedrock:InvokeModel", "bedrock:Retrieve"],
+        actions: [
+          "bedrock:InvokeModel",
+          "bedrock:InvokeModelWithResponseStream", // required by ConverseStream, distinct from InvokeModel
+          "bedrock:Retrieve",
+          "bedrock:StartIngestionJob",
+          "bedrock:GetIngestionJob",
+        ],
         resources: ["*"], // model/KB ARNs vary by region+model; scoping further needs the ARN at synth time
       }),
     );
@@ -181,7 +193,9 @@ export class WorkshopChatStack extends Stack {
         COGNITO_USER_POOL_ID: userPool.userPoolId,
         COGNITO_CLIENT_ID: userPoolClient.userPoolClientId,
         BEDROCK_MODEL_ID: props.bedrockModelId,
-        ...(knowledgeBase ? { BEDROCK_KB_ID: knowledgeBase.knowledgeBaseId } : {}),
+        ...(knowledgeBase
+          ? { BEDROCK_KB_ID: knowledgeBase.knowledgeBaseId, BEDROCK_KB_DATA_SOURCE_ID: knowledgeBase.dataSourceId }
+          : {}),
         SCALE: props.scale,
         ADMIN_USERNAME: props.adminUsername,
         PARTICIPANT_PASSPHRASE: props.participantPassphrase,
@@ -283,10 +297,15 @@ export class WorkshopChatStack extends Stack {
       serviceToken: provider.serviceToken,
       properties: {
         UserPoolId: userPool.userPoolId,
-        Seed: credentialSeed.secretValue.unsafeUnwrap(), // scoped to this Lambda's own event payload, not logged by CFN
+        // ARNs, not values: CloudFormation dynamic references to Secrets Manager are NOT
+        // resolved in custom resource properties (AWS docs — "can't be used for secure values
+        // ... in custom resources"), so passing secretValue.unsafeUnwrap() here would hand the
+        // Lambda the literal unresolved "{{resolve:secretsmanager:...}}" token string instead of
+        // the real secret. The Lambda fetches both via GetSecretValue itself (grantRead above).
+        SeedArn: credentialSeed.secretArn,
         ParticipantCount: props.participantCount,
         AdminUsername: props.adminUsername,
-        AdminPassword: operatorPassword.secretValue.unsafeUnwrap(), // same scoping as Seed above
+        AdminPasswordArn: operatorPassword.secretArn,
       },
     });
 

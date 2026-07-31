@@ -70,9 +70,16 @@ export async function authRoutes(app: FastifyInstance) {
     reply.send({ ok: true });
   });
 
+  // Operator login is Cognito-backed like Fallback #2 above — the one operator account is
+  // created at deploy time (infra/lib/workshop-chat-stack.ts) with a random password. This
+  // route just adds the role check: any Cognito credential check that succeeds for a *different*
+  // username still gets rejected as operator (though it would be a valid participant login).
   app.post("/api/login/operator", async (req, reply) => {
-    const { passcode } = req.body as { passcode?: string };
-    if (passcode !== config.operatorPasscode) return reply.code(403).send({ error: "wrong passcode" });
+    const { username, password } = req.body as { username?: string; password?: string };
+    if (!username || !password) return reply.code(400).send({ error: "missing fields" });
+    if (username !== config.adminUsername) return reply.code(403).send({ error: "invalid credentials" });
+    const ok = await verifyParticipantPassword(username, password);
+    if (!ok) return reply.code(403).send({ error: "invalid credentials" });
     mintSessionCookie(reply, { participantId: "operator", role: "operator" });
     reply.send({ ok: true });
   });

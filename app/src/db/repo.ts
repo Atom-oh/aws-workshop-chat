@@ -1,5 +1,5 @@
 import { ulid, decodeTime } from "ulid";
-import { GetCommand, PutCommand, QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand, PutCommand, QueryCommand, ScanCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import { ddb } from "./client.js";
 import {
   TABLE_NAME,
@@ -9,6 +9,7 @@ import {
   type ParticipantItem,
   type AiQueryItem,
   type TimelineItem,
+  type GuideReindexItem,
   type QuestionStatus,
   type MessageKind,
   type TimelineEvent,
@@ -303,7 +304,6 @@ export async function setParticipantBlocked(participantId: string, blocked: bool
 export async function listParticipants(): Promise<ParticipantItem[]> {
   // ponytail: no participant-list GSI; N is bounded (<=500) so a table Scan filtered to
   // SK = META is acceptable for a 3-day app. Upgrade to a GSI if N grows past low thousands.
-  const { ScanCommand } = await import("@aws-sdk/lib-dynamodb");
   const res = await ddb.send(
     new ScanCommand({
       TableName: TABLE_NAME,
@@ -363,6 +363,46 @@ export async function listAiQueriesForParticipant(participantId: string): Promis
     }),
   );
   return (res.Items ?? []) as AiQueryItem[];
+}
+
+export async function listAllAiQueries(): Promise<AiQueryItem[]> {
+  // Same scan-is-fine-at-this-scale reasoning as listParticipants above.
+  const res = await ddb.send(
+    new ScanCommand({
+      TableName: TABLE_NAME,
+      FilterExpression: "begins_with(sk, :prefix)",
+      ExpressionAttributeValues: { ":prefix": "AI#" },
+    }),
+  );
+  return (res.Items ?? []) as AiQueryItem[];
+}
+
+// ---------- Guide document reindexing ----------
+
+export async function getGuideReindexState(): Promise<GuideReindexItem | undefined> {
+  const res = await ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: keys.guideReindex() }));
+  return res.Item as GuideReindexItem | undefined;
+}
+
+export async function startGuideReindex(jobId: string, status: string) {
+  await ddb.send(
+    new PutCommand({
+      TableName: TABLE_NAME,
+      Item: { ...keys.guideReindex(), jobId, status, startedAt: new Date().toISOString() },
+    }),
+  );
+}
+
+export async function updateGuideReindexStatus(status: string) {
+  await ddb.send(
+    new UpdateCommand({
+      TableName: TABLE_NAME,
+      Key: keys.guideReindex(),
+      UpdateExpression: "SET #s = :s",
+      ExpressionAttributeNames: { "#s": "status" },
+      ExpressionAttributeValues: { ":s": status },
+    }),
+  );
 }
 
 // ---------- Timeline ----------

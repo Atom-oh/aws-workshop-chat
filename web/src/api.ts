@@ -43,13 +43,49 @@ export interface Channel {
   scaleVisible: boolean;
 }
 
+export interface AiQuery {
+  pk: string;
+  sk: string;
+  participantId: string;
+  query: string;
+  refDocs: string[];
+  answerSummary: string;
+  feedback: "up" | "down" | null;
+  labStep: string;
+  tokensIn: number;
+  tokensOut: number;
+  createdAt: string;
+}
+
+export interface GuideDoc {
+  key: string;
+  name: string;
+  sizeBytes: number;
+  active: boolean;
+  lastModified: string | null;
+}
+
+export interface NoShow {
+  participantId: string;
+  index: number;
+  joinUrl: string;
+}
+
+export interface Attendance {
+  expectedCount: number;
+  joinedCount: number;
+  noShowCount: number;
+  noShows: NoShow[];
+}
+
 export const api = {
   session: () => req<{ session: Session | null }>("/api/session"),
   loginPassphrase: (participantId: string, passphrase: string) =>
     req("/api/login/passphrase", { method: "POST", body: JSON.stringify({ participantId, passphrase }) }),
   loginPassword: (participantId: string, password: string) =>
     req("/api/login/password", { method: "POST", body: JSON.stringify({ participantId, password }) }),
-  loginOperator: (passcode: string) => req("/api/login/operator", { method: "POST", body: JSON.stringify({ passcode }) }),
+  loginOperator: (username: string, password: string) =>
+    req("/api/login/operator", { method: "POST", body: JSON.stringify({ username, password }) }),
   logout: () => req("/api/logout", { method: "POST" }),
 
   channels: () => req<{ channels: Channel[] }>("/api/channels"),
@@ -83,6 +119,26 @@ export const api = {
   roster: () => req<{ roster: { participantId: string; joinUrl: string }[]; participantPassphrase: string }>(
     "/api/operator/roster",
   ),
+
+  aiQueries: () => req<{ queries: AiQuery[] }>("/api/operator/ai-queries"),
+  aiFeedback: (aiUlid: string, feedback: "up" | "down") =>
+    req(`/api/ai/${aiUlid}/feedback`, { method: "POST", body: JSON.stringify({ feedback }) }),
+
+  attendance: () => req<Attendance>("/api/operator/attendance"),
+  resendJoinLink: (participantId: string) =>
+    req<{ joinUrl: string }>(`/api/operator/attendance/${participantId}/resend`, { method: "POST" }),
+
+  guideDocs: () => req<{ docs: GuideDoc[] }>("/api/operator/guide-docs"),
+  presignGuideDoc: (filename: string, contentType: string, sizeBytes: number) =>
+    req<{ url: string; key: string }>("/api/operator/guide-docs/presign", {
+      method: "POST",
+      body: JSON.stringify({ filename, contentType, sizeBytes }),
+    }),
+  markGuideDocUploaded: () => req("/api/operator/guide-docs/uploaded", { method: "POST" }),
+  deleteGuideDoc: (key: string) => req(`/api/operator/guide-docs?key=${encodeURIComponent(key)}`, { method: "DELETE" }),
+  toggleGuideDoc: (key: string) => req(`/api/operator/guide-docs/toggle?key=${encodeURIComponent(key)}`, { method: "POST" }),
+  reindexGuideDocs: () => req<{ jobId: string; status: string }>("/api/operator/guide-docs/reindex", { method: "POST" }),
+  reindexStatus: () => req<{ status: string | null; startedAt?: string }>("/api/operator/guide-docs/reindex-status"),
 };
 
 export function wsUrl(channel: string): string {

@@ -102,7 +102,7 @@ npx cdk deploy \
   --context workshopName="woori-1030" \
   --context scale="large" \
   --context bedrockModelId="global.anthropic.claude-sonnet-5" \
-  --context operatorPasscode="<choose one>" \
+  --context adminUsername="admin@ws" \
   --context participantPassphrase="woori-1030" \
   --context participantCount="120" \
   --context enableKnowledgeBase="true"
@@ -127,7 +127,22 @@ whichever region is closest to your participants.
 
 **Outputs** (`npx cdk deploy` prints these, or `aws cloudformation describe-stacks`):
 `AppUrl`, `OperatorConsoleUrl` (`<AppUrl>/operator`), `ExportBucketPath`, `GuideBucketPath`,
-`GuideSyncCommand` (when the Knowledge Base is enabled), `CloudWatchMetricsLink`.
+`GuideSyncCommand` (when the Knowledge Base is enabled), `OperatorUsername`,
+`OperatorCredentialsCommand`, `CloudWatchMetricsLink`.
+
+### Operator login
+
+The one operator account (`adminUsername`, default `admin@ws`) is a real Cognito user,
+provisioned at deploy time with a random password that never appears in the stack template.
+Retrieve it with the `OperatorCredentialsCommand` output:
+
+```bash
+aws secretsmanager get-secret-value --region <region> --secret-id <OperatorPassword arn> \
+  --query SecretString --output text
+```
+
+Re-running `cdk deploy` never resets this password once the account exists (idempotent, same
+as participant provisioning) — if you need to rotate it, delete the Cognito user and re-deploy.
 
 ### Custom domain
 
@@ -169,7 +184,8 @@ the delta, never touches or duplicates existing participants.
 
 ## Operate
 
-Open `<AppUrl>/operator` and log in with `operatorPasscode`. From there:
+Open `<AppUrl>/operator` and log in with the operator username/password (see "Operator login"
+above). From there:
 
 - **참가자 조인 링크** — one row per participant with a ready-to-click join URL + CSV download.
   Distributing this list (via SSM broadcast, chat, however your workshop platform prefers) is

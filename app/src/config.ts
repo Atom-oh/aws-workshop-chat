@@ -8,7 +8,10 @@ export const config = {
   // join link on demand, with no separate roster to keep in sync.
   sessionSecret: process.env.SESSION_SECRET ?? "dev-secret-do-not-use-in-production",
   participantPassphrase: process.env.PARTICIPANT_PASSPHRASE ?? "dev-passphrase",
-  operatorPasscode: process.env.OPERATOR_PASSCODE ?? "dev-operator",
+  // The one operator account, provisioned in Cognito at deploy time (infra/lib/workshop-chat-stack.ts)
+  // with a random password — the /api/login/operator route just checks the authenticated
+  // Cognito username matches this before granting the operator role.
+  adminUsername: process.env.ADMIN_USERNAME ?? "admin@ws",
   scale: (process.env.SCALE as "small" | "large") ?? "small",
   participantCount: Number(process.env.PARTICIPANT_COUNT ?? 10),
   port: Number(process.env.PORT ?? 3000),

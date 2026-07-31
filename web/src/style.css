@@ -2,8 +2,8 @@
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  background: #f5f6f8;
-  color: #1a1a1a;
+  background: #161e2d; /* matches the app's dark theme root, avoids a light flash before mount */
+  color: #fff;
 }
 button {
   cursor: pointer;

@@ -1,130 +1,190 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, wsUrl, type Channel, type Message, type Session } from "./api";
 import { avatarColor, renderBody } from "./format";
+import { COLORS } from "./theme";
+import Composer from "./Composer";
 
 function timeLabel(iso: string) {
   return new Date(iso).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
 }
 
-function Composer({
-  value,
-  onChange,
-  onSend,
-  onPaste,
-  placeholder,
-  extra,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  onSend: () => void;
-  onPaste?: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
-  placeholder: string;
-  extra?: React.ReactNode;
-}) {
-  const ref = useRef<HTMLTextAreaElement | null>(null);
+interface AiEntry {
+  query: string;
+  answer: string;
+  refDocs: string[];
+  aiUlid?: string;
+  feedback?: "up" | "down" | null;
+  streaming?: boolean;
+  error?: boolean;
+}
 
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
-  }, [value]);
-
-  function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      onSend();
-    }
-  }
-
+function NavItem({ icon, iconColor, label, count, active, onClick }: any) {
   return (
-    <div className="composer-wrap">
-      {extra}
-      <textarea
-        ref={ref}
-        rows={1}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={onKeyDown}
-        onPaste={onPaste}
-        placeholder={placeholder}
-      />
-      <div className="composer-footer">
-        <span className="hint">Enter로 보내기 · Shift+Enter로 줄바꿈 · `code` · ```코드블록```</span>
-        <button className="primary" onClick={onSend}>
-          보내기
-        </button>
-      </div>
+    <div
+      onClick={onClick}
+      style={{
+        display: "flex", alignItems: "center", gap: 8, height: 32, padding: "0 10px", borderRadius: 8,
+        cursor: "pointer", background: active ? "rgba(255,255,255,.09)" : "transparent", fontSize: 14,
+      }}
+    >
+      <span style={{ width: 15, textAlign: "center", color: iconColor, fontSize: 12 }}>{icon}</span>
+      <span style={{ flex: 1, fontWeight: 500 }}>{label}</span>
+      {count !== undefined && (
+        <span style={{ fontSize: 11.5, color: COLORS.dim, fontFamily: "ui-monospace,Menlo,monospace" }}>{count}</span>
+      )}
     </div>
   );
 }
 
-function MessageRow({
-  m,
-  children,
-}: {
-  m: { participantId: string; createdAt: string; body: string };
-  children?: React.ReactNode;
-}) {
+function MessageRow({ m, children }: { m: Message; children?: React.ReactNode }) {
   return (
-    <div className="msg-row">
-      <div className="avatar" style={{ background: avatarColor(m.participantId) }}>
+    <div style={{ display: "flex", gap: 11, padding: "10px 20px", position: "relative" }} className="msg-row-dark">
+      <div style={{ width: 32, height: 32, flex: "none", borderRadius: 8, background: avatarColor(m.participantId), display: "flex", alignItems: "center", justifyContent: "center", font: "700 11px/1 inherit" }}>
         {m.participantId.slice(-2)}
       </div>
-      <div className="msg-content">
-        <div className="meta">
-          <span className="msg-author">참가자 ...{m.participantId.slice(-4)}</span>
-          <span className="msg-time">{timeLabel(m.createdAt)}</span>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 13.5, fontWeight: 700 }}>참가자 ...{m.participantId.slice(-4)}</span>
+          <span style={{ fontSize: 11, color: "rgba(255,255,255,.3)", fontFamily: "ui-monospace,Menlo,monospace" }}>{timeLabel(m.createdAt)}</span>
+          {m.kind === "question" && (
+            <span style={{
+              display: "inline-flex", alignItems: "center", gap: 5, height: 18, padding: "0 7px", borderRadius: 6,
+              background: m.status === "resolved" ? "rgba(1,168,141,.16)" : "rgba(255,153,0,.16)",
+              color: m.status === "resolved" ? COLORS.tealText : "#FFB84D", font: "700 10.5px/1 inherit",
+            }}>
+              {m.status === "resolved" ? "✓ 해결" : "미해결"} · 👍{m.upvotes}
+            </span>
+          )}
         </div>
-        <div className="body">{renderBody(m.body)}</div>
+        <div style={{ fontSize: 14, lineHeight: 1.6, color: "rgba(255,255,255,.92)" }}>{renderBody(m.body)}</div>
         {children}
       </div>
     </div>
   );
 }
 
-function Thread({ slug, rootUlid, onClose }: { slug: string; rootUlid: string; onClose: () => void }) {
+function ThreadPanel({ slug, message, onClose }: { slug: string; message: Message; onClose: () => void }) {
+  const rootUlid = message.sk.replace("MSG#", "");
   const [replies, setReplies] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
 
-  useEffect(() => {
-    api.threadReplies(rootUlid).then((r) => setReplies(r.replies));
-  }, [rootUlid]);
+  async function load() {
+    setReplies((await api.threadReplies(rootUlid)).replies);
+  }
+  useEffect(() => { load(); }, [rootUlid]);
 
   async function send() {
     if (!draft.trim()) return;
     await api.postMessage(slug, draft, "msg", rootUlid);
     setDraft("");
-    setReplies((await api.threadReplies(rootUlid)).replies);
+    load();
   }
 
   return (
-    <div className="card thread-card">
-      <div className="row" style={{ justifyContent: "space-between" }}>
-        <strong>스레드</strong>
-        <button onClick={onClose}>닫기</button>
+    <div style={{ width: 392, minWidth: 320, flex: "0 1 392px", background: COLORS.bgDark, borderLeft: `1px solid ${COLORS.border}`, display: "flex", flexDirection: "column", minHeight: 0 }}>
+      <div style={{ flex: "none", display: "flex", alignItems: "center", gap: 10, padding: "0 14px 0 18px", height: 52, borderBottom: `1px solid ${COLORS.border}` }}>
+        <div style={{ flex: 1, minWidth: 0, fontSize: 14.5, fontWeight: 700 }}>스레드</div>
+        <button onClick={onClose} style={{ width: 28, height: 28, border: 0, borderRadius: 8, background: "rgba(255,255,255,.07)", color: "rgba(255,255,255,.6)", cursor: "pointer" }}>×</button>
       </div>
-      {replies.map((r) => (
-        <MessageRow key={r.sk} m={r} />
-      ))}
-      <Composer value={draft} onChange={setDraft} onSend={send} placeholder="답글 작성" />
+      <div style={{ flex: 1, overflowY: "auto", padding: "16px 18px" }}>
+        <div style={{ fontSize: 14.5, lineHeight: 1.6, color: "#fff", marginBottom: 12 }}>{renderBody(message.body)}</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, borderTop: `1px solid ${COLORS.border}`, paddingTop: 14 }}>
+          {replies.map((r) => (
+            <div key={r.sk} style={{ display: "flex", gap: 10 }}>
+              <div style={{ width: 28, height: 28, flex: "none", borderRadius: 7, background: avatarColor(r.participantId), display: "flex", alignItems: "center", justifyContent: "center", font: "700 10px/1 inherit" }}>
+                {r.participantId.slice(-2)}
+              </div>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 500 }}>참가자 ...{r.participantId.slice(-4)}</span>
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,.3)", fontFamily: "ui-monospace,Menlo,monospace" }}>{timeLabel(r.createdAt)}</span>
+                </div>
+                <div style={{ fontSize: 13.5, lineHeight: 1.6, color: "rgba(255,255,255,.85)" }}>{renderBody(r.body)}</div>
+              </div>
+            </div>
+          ))}
+          {replies.length === 0 && <div style={{ fontSize: 13, color: COLORS.dim }}>아직 답변이 없습니다.</div>}
+        </div>
+      </div>
+      <div style={{ flex: "none", padding: "12px 18px 16px" }}>
+        <Composer value={draft} onChange={setDraft} onSend={send} placeholder="답글 작성" />
+      </div>
+    </div>
+  );
+}
+
+function AiView({ history, aiQuery, setAiQuery, aiBusy, ask, onFeedback }: {
+  history: AiEntry[]; aiQuery: string; setAiQuery: (v: string) => void; aiBusy: boolean;
+  ask: () => void; onFeedback: (i: number, fb: "up" | "down") => void;
+}) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
+      <div style={{ flex: "none", padding: "16px 20px 12px", borderBottom: `1px solid ${COLORS.border}` }}>
+        <div style={{ fontSize: 17, fontWeight: 700 }}>AI 도우미</div>
+        <div style={{ fontSize: 12.5, color: COLORS.dim }}>답변은 본인에게만 표시됩니다 · 랩 가이드에 대해 질문하세요</div>
+      </div>
+      <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
+        {history.map((h, i) => (
+          <div key={i}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "rgba(255,255,255,.85)", marginBottom: 8 }}>{h.query}</div>
+            <div style={{
+              border: `1px solid ${h.error ? "rgba(221,52,76,.45)" : "rgba(1,168,141,.3)"}`, borderRadius: 12,
+              background: "rgba(255,255,255,.03)", padding: "13px 15px",
+            }}>
+              <div style={{ fontSize: 14, lineHeight: 1.6, color: "#fff" }}>
+                {renderBody(h.answer)}
+                {h.streaming && <span style={{ opacity: 0.5 }}>▌</span>}
+              </div>
+              {!h.streaming && h.refDocs.length > 0 && (
+                <div style={{ marginTop: 9, fontSize: 11.5, color: "rgba(255,255,255,.4)", fontFamily: "ui-monospace,Menlo,monospace" }}>
+                  참고: {h.refDocs.join(", ")}
+                </div>
+              )}
+              {!h.streaming && h.aiUlid && (
+                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                  <button
+                    onClick={() => onFeedback(i, "up")}
+                    style={{ border: "1px solid rgba(255,255,255,.14)", background: h.feedback === "up" ? "rgba(1,168,141,.18)" : "transparent", color: h.feedback === "up" ? COLORS.tealText : "rgba(255,255,255,.6)", borderRadius: 999, height: 26, padding: "0 10px", cursor: "pointer", fontSize: 12 }}
+                  >
+                    👍 도움됨
+                  </button>
+                  <button
+                    onClick={() => onFeedback(i, "down")}
+                    style={{ border: "1px solid rgba(255,255,255,.14)", background: h.feedback === "down" ? "rgba(221,52,76,.18)" : "transparent", color: h.feedback === "down" ? COLORS.redText : "rgba(255,255,255,.6)", borderRadius: 999, height: 26, padding: "0 10px", cursor: "pointer", fontSize: 12 }}
+                  >
+                    👎 가이드에 없음
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+        {history.length === 0 && <div style={{ color: COLORS.dim, fontSize: 13 }}>아직 질문한 내용이 없습니다.</div>}
+      </div>
+      <div style={{ flex: "none", padding: "12px 20px 16px" }}>
+        <Composer value={aiQuery} onChange={setAiQuery} onSend={ask} placeholder="랩 가이드에 대해 질문하기" />
+        {aiBusy && <div style={{ fontSize: 12, color: COLORS.dim, marginTop: 6 }}>답변 생성 중…</div>}
+      </div>
     </div>
   );
 }
 
 export default function Chat({ session, onLogout }: { session: Session; onLogout: () => void }) {
   const [channels, setChannels] = useState<Channel[]>([]);
+  const [view, setView] = useState<"channel" | "ai">("channel");
   const [active, setActive] = useState<string>("");
+  const [labStep, setLabStep] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
   const [asQuestion, setAsQuestion] = useState(false);
-  const [openThread, setOpenThread] = useState<string | null>(null);
+  const [selectedUlid, setSelectedUlid] = useState<string | null>(null);
   const [aiQuery, setAiQuery] = useState("");
-  const [aiHistory, setAiHistory] = useState<{ query: string; answer: string; refDocs: string[] }[]>([]);
+  const [aiHistory, setAiHistory] = useState<AiEntry[]>([]);
   const [aiBusy, setAiBusy] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
+    api.labStep().then((r) => setLabStep(r.step));
     api.channels().then((r) => {
       const visible = r.channels.filter((c) => c.scaleVisible && !c.archived);
       setChannels(visible);
@@ -182,95 +242,151 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
   }
 
   async function ask() {
-    if (!aiQuery.trim()) return;
+    const query = aiQuery.trim();
+    if (!query || aiBusy) return;
+    setAiQuery("");
     setAiBusy(true);
+    const index = aiHistory.length;
+    setAiHistory((h) => [...h, { query, answer: "", refDocs: [], streaming: true }]);
+
     try {
-      const result = await api.ask(aiQuery);
-      setAiHistory((h) => [...h, { query: aiQuery, ...result }]);
-      setAiQuery("");
+      const res = await fetch("/api/ai/ask/stream", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query }),
+      });
+      if (!res.ok || !res.body) throw new Error(`${res.status} ${res.statusText}`);
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      // Minimal SSE parser: split on blank-line-terminated events, each with an "event:"/"data:" pair.
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let sep;
+        while ((sep = buffer.indexOf("\n\n")) !== -1) {
+          const rawEvent = buffer.slice(0, sep);
+          buffer = buffer.slice(sep + 2);
+          const eventType = /event: (\w+)/.exec(rawEvent)?.[1];
+          const dataLine = /data: (.*)/.exec(rawEvent)?.[1];
+          if (!dataLine) continue;
+          const payload = JSON.parse(dataLine);
+          if (eventType === "delta") {
+            setAiHistory((h) => h.map((e, i) => (i === index ? { ...e, answer: e.answer + payload.chunk } : e)));
+          } else if (eventType === "done") {
+            setAiHistory((h) => h.map((e, i) => (i === index ? { ...e, refDocs: payload.refDocs, aiUlid: payload.aiUlid, streaming: false } : e)));
+          } else if (eventType === "error") {
+            throw new Error(payload.error);
+          }
+        }
+      }
     } catch (err: any) {
-      setAiHistory((h) => [...h, { query: aiQuery, answer: `오류: ${err.message}`, refDocs: [] }]);
+      setAiHistory((h) => h.map((e, i) => (i === index ? { ...e, answer: `오류: ${err.message}`, streaming: false, error: true } : e)));
     } finally {
       setAiBusy(false);
     }
   }
 
+  async function onFeedback(i: number, fb: "up" | "down") {
+    const entry = aiHistory[i];
+    if (!entry.aiUlid) return;
+    await api.aiFeedback(entry.aiUlid, fb);
+    setAiHistory((h) => h.map((e, idx) => (idx === i ? { ...e, feedback: fb } : e)));
+  }
+
   const sorted = active === "questions" ? [...messages].sort((a, b) => (b.upvotes ?? 0) - (a.upvotes ?? 0)) : messages;
+  const selected = useMemo(() => messages.find((m) => m.sk.replace("MSG#", "") === selectedUlid) ?? null, [messages, selectedUlid]);
+  const activeChannelName = channels.find((c) => c.pk.replace("CHANNEL#", "") === active)?.name ?? active;
 
   return (
-    <div className="container">
-      <div className="row" style={{ justifyContent: "space-between", marginBottom: 12 }}>
-        <strong>Workshop Chat</strong>
-        <div className="row">
-          <span style={{ fontSize: 13, color: "#667085" }}>
+    <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: COLORS.bg, color: "#fff", fontSize: 14, overflow: "hidden" }}>
+      <div style={{ height: 56, flex: "none", display: "flex", alignItems: "center", gap: 16, padding: "0 16px", background: COLORS.bgDark, borderBottom: `1px solid ${COLORS.border}` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flex: "none" }}>
+          <div style={{ width: 26, height: 26, borderRadius: 6, background: COLORS.orange, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, color: COLORS.bgDark }}>W</div>
+          <div style={{ fontWeight: 700, fontSize: 13 }}>Workshop Chat</div>
+        </div>
+        {labStep && (
+          <span style={{ fontSize: 11.5, color: COLORS.dim, fontFamily: "ui-monospace,Menlo,monospace" }}>현재 랩 스텝: {labStep}</span>
+        )}
+        <div style={{ flex: 1 }} />
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <span style={{ fontSize: 13, color: COLORS.dim }}>
             {session.role === "operator" ? "운영자" : `참가자 ...${session.participantId.slice(-4)}`}
           </span>
-          <button onClick={onLogout}>로그아웃</button>
+          <button onClick={onLogout} style={{ height: 30, padding: "0 12px", border: "1px solid rgba(255,255,255,.2)", borderRadius: 999, background: "transparent", color: "#fff", cursor: "pointer" }}>로그아웃</button>
         </div>
       </div>
 
-      <div className="tabs">
-        {channels.map((c) => {
-          const slug = c.pk.replace("CHANNEL#", "");
-          return (
-            <button key={slug} className={active === slug ? "active" : ""} onClick={() => setActive(slug)}>
-              {c.name}
-            </button>
-          );
-        })}
-      </div>
+      <div style={{ flex: 1, display: "flex", minHeight: 0, overflowX: "auto" }}>
+        <div style={{ width: 224, flex: "none", background: COLORS.bgDark, borderRight: `1px solid ${COLORS.border}`, display: "flex", flexDirection: "column", overflowY: "auto" }}>
+          <div style={{ padding: "14px 12px 4px", fontSize: 11, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "rgba(255,255,255,.35)" }}>채널</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 1, padding: "0 8px 16px" }}>
+            {channels.map((c) => {
+              const slug = c.pk.replace("CHANNEL#", "");
+              return (
+                <NavItem key={slug} icon="#" iconColor="rgba(255,255,255,.35)" label={c.name} active={view === "channel" && active === slug}
+                  onClick={() => { setView("channel"); setActive(slug); setSelectedUlid(null); }} />
+              );
+            })}
+          </div>
+          <div style={{ padding: "0 12px 4px", fontSize: 11, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "rgba(255,255,255,.35)" }}>도우미</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 1, padding: "0 8px" }}>
+            <NavItem icon="✳" iconColor={COLORS.teal} label="AI 도우미" active={view === "ai"} onClick={() => setView("ai")} />
+          </div>
+        </div>
 
-      <div className="card">
-        {sorted.filter((m) => !m.deleted).map((m) => (
-          <div key={m.sk}>
-            <MessageRow m={m}>
-              {m.kind === "question" && (
-                <span className={`badge ${m.status === "resolved" ? "resolved" : ""}`}>
-                  {m.status === "resolved" ? "해결됨" : "미해결"} · 👍{m.upvotes}
-                </span>
-              )}
-              <div className="msg-actions">
-                <button onClick={() => setOpenThread(openThread === m.sk ? null : m.sk.replace("MSG#", ""))}>스레드</button>
-                {m.kind === "question" && <button onClick={() => api.upvote(active, m.sk.replace("MSG#", ""))}>👍</button>}
-                {m.kind === "question" && session.role === "operator" && m.status !== "resolved" && (
-                  <button onClick={() => api.resolve(active, m.sk.replace("MSG#", ""))}>해결로 표시</button>
-                )}
-                {session.role === "operator" && (
-                  <button onClick={() => api.deleteMessage(active, m.sk.replace("MSG#", ""))}>삭제</button>
-                )}
+        <div style={{ flex: 1, minWidth: 480, display: "flex", flexDirection: "column", background: COLORS.bg }}>
+          {view === "channel" && (
+            <>
+              <div style={{ flex: "none", display: "flex", alignItems: "center", gap: 10, padding: "0 20px", height: 52, borderBottom: `1px solid ${COLORS.border}` }}>
+                <span style={{ fontFamily: "ui-monospace,Menlo,monospace", color: "rgba(255,255,255,.4)", fontSize: 16 }}>#</span>
+                <span style={{ fontSize: 16, fontWeight: 700 }}>{activeChannelName}</span>
               </div>
-            </MessageRow>
-            {openThread === m.sk.replace("MSG#", "") && (
-              <Thread slug={active} rootUlid={m.sk.replace("MSG#", "")} onClose={() => setOpenThread(null)} />
-            )}
-          </div>
-        ))}
-
-        {active === "questions" && (
-          <label className="row checkbox-row">
-            <input type="checkbox" style={{ width: "auto" }} checked={asQuestion} onChange={(e) => setAsQuestion(e.target.checked)} />
-            질문으로 등록
-          </label>
-        )}
-        <Composer value={draft} onChange={setDraft} onSend={send} onPaste={onPaste} placeholder="메시지 입력 (이미지 붙여넣기 가능)" />
-      </div>
-
-      <div className="card">
-        <strong>AI 챗</strong>
-        <p style={{ fontSize: 13, color: "#667085" }}>답변은 본인에게만 표시됩니다.</p>
-        {aiHistory.map((h, i) => (
-          <div key={i} className="msg">
-            <div className="meta">질문: {h.query}</div>
-            <div className="body">{renderBody(h.answer)}</div>
-            {h.refDocs.length > 0 && <div className="meta">참고: {h.refDocs.join(", ")}</div>}
-          </div>
-        ))}
-        <div className="row" style={{ marginTop: 8 }}>
-          <input value={aiQuery} onChange={(e) => setAiQuery(e.target.value)} placeholder="랩 가이드에 대해 질문하기" onKeyDown={(e) => e.key === "Enter" && ask()} />
-          <button className="primary" disabled={aiBusy} onClick={ask}>
-            질문
-          </button>
+              <div style={{ flex: 1, overflowY: "auto", padding: "8px 0 8px" }}>
+                {sorted.filter((m) => !m.deleted).map((m) => {
+                  const ulid = m.sk.replace("MSG#", "");
+                  return (
+                    <div key={m.sk} onClick={() => setSelectedUlid(ulid)} style={{ cursor: "pointer", background: selectedUlid === ulid ? "rgba(255,153,0,.055)" : "transparent" }}>
+                      <MessageRow m={m}>
+                        <div style={{ display: "flex", gap: 12, marginTop: 6 }}>
+                          <button onClick={(e) => { e.stopPropagation(); setSelectedUlid(ulid); }} style={{ border: "none", background: "transparent", color: COLORS.orange, fontSize: 12.5, cursor: "pointer", padding: 0 }}>스레드</button>
+                          {m.kind === "question" && (
+                            <button onClick={(e) => { e.stopPropagation(); api.upvote(active, ulid); }} style={{ border: "none", background: "transparent", color: "rgba(255,255,255,.6)", fontSize: 12.5, cursor: "pointer", padding: 0 }}>👍 업보트</button>
+                          )}
+                          {m.kind === "question" && session.role === "operator" && m.status !== "resolved" && (
+                            <button onClick={(e) => { e.stopPropagation(); api.resolve(active, ulid); }} style={{ border: "none", background: "transparent", color: "#FFB84D", fontSize: 12.5, cursor: "pointer", padding: 0 }}>해결로 표시</button>
+                          )}
+                          {session.role === "operator" && (
+                            <button onClick={(e) => { e.stopPropagation(); api.deleteMessage(active, ulid); }} style={{ border: "none", background: "transparent", color: "rgba(255,255,255,.4)", fontSize: 12.5, cursor: "pointer", padding: 0 }}>삭제</button>
+                          )}
+                        </div>
+                      </MessageRow>
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ flex: "none", padding: "12px 20px 16px" }}>
+                {active === "questions" && (
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: COLORS.dim, marginBottom: 8 }}>
+                    <input type="checkbox" checked={asQuestion} onChange={(e) => setAsQuestion(e.target.checked)} style={{ width: "auto" }} />
+                    질문으로 등록
+                  </label>
+                )}
+                <Composer value={draft} onChange={setDraft} onSend={send} onPaste={onPaste} placeholder="메시지 입력 (이미지 붙여넣기 가능)" />
+              </div>
+            </>
+          )}
+          {view === "ai" && (
+            <AiView history={aiHistory} aiQuery={aiQuery} setAiQuery={setAiQuery} aiBusy={aiBusy} ask={ask} onFeedback={onFeedback} />
+          )}
         </div>
+
+        {selected && view === "channel" && (
+          <ThreadPanel slug={active} message={selected} onClose={() => setSelectedUlid(null)} />
+        )}
       </div>
     </div>
   );

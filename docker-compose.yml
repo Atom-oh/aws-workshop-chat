@@ -1,6 +1,7 @@
-# Local dev loop, no AWS account required for chat/threads/upvotes/export/moderation.
-# AI chat is the one exception — Bedrock has no local emulator, so /api/ai/ask needs real AWS
-# credentials on the host even here; everything else in §13's acceptance list is testable offline.
+# Local dev loop, no AWS account required for chat/threads/upvotes/export/moderation via the
+# participant passphrase login. Two exceptions need real AWS credentials on the host: AI chat
+# (Bedrock has no local emulator) and operator login (Cognito-backed, see auth.ts) — pass
+# ADMIN_USERNAME/ADMIN_PASSWORD matching a real Cognito user in your dev/test pool for that path.
 services:
   dynamodb-local:
     image: amazon/dynamodb-local:latest
@@ -34,7 +35,7 @@ services:
       AWS_REGION: us-east-1
       GUIDE_LOCAL_DIR: /guide
       SCALE: small
-      OPERATOR_PASSCODE: dev-operator
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin@ws}
       PARTICIPANT_PASSPHRASE: dev-passphrase
       PARTICIPANT_COUNT: "10"
       SESSION_SECRET: dev-secret-do-not-use-in-production

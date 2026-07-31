@@ -32,5 +32,5 @@ export default function App() {
     setSession(null);
   }
 
-  return onOperatorRoute ? <Operator /> : <Chat session={session} onLogout={onLogout} />;
+  return onOperatorRoute ? <Operator onLogout={onLogout} /> : <Chat session={session} onLogout={onLogout} />;
 }

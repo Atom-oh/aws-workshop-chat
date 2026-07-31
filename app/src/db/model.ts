@@ -50,6 +50,14 @@ export interface AiQueryItem {
   createdAt: string;
 }
 
+export interface GuideReindexItem {
+  pk: "WORKSHOP";
+  sk: "GUIDE_REINDEX";
+  jobId: string;
+  status: string; // raw Bedrock ingestion job status
+  startedAt: string;
+}
+
 export interface TimelineItem {
   pk: "WORKSHOP";
   sk: string;
@@ -86,6 +94,7 @@ export const keys = {
   }),
   labStep: () => ({ pk: "WORKSHOP", sk: "LABSTEP" }),
   exportState: () => ({ pk: "WORKSHOP", sk: "EXPORT" }),
+  guideReindex: () => ({ pk: "WORKSHOP" as const, sk: "GUIDE_REINDEX" as const }),
 };
 
 // ponytail: no secondary indexes needed. QSTATUS# and WORKSHOP are already distinct base-table

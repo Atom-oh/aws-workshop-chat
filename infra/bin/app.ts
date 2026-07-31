@@ -11,7 +11,7 @@ const app = new App();
 const workshopName = app.node.tryGetContext("workshopName") ?? "aws-workshop-chat";
 const scale = (app.node.tryGetContext("scale") ?? "small") as "small" | "large";
 const bedrockModelId = app.node.tryGetContext("bedrockModelId");
-const operatorPasscode = app.node.tryGetContext("operatorPasscode");
+const adminUsername = app.node.tryGetContext("adminUsername") ?? "admin@ws";
 const participantPassphrase = app.node.tryGetContext("participantPassphrase");
 const participantCount = Number(app.node.tryGetContext("participantCount") ?? 50);
 const enableKnowledgeBase = (app.node.tryGetContext("enableKnowledgeBase") ?? "true") !== "false";
@@ -22,7 +22,7 @@ const hostedZoneId = app.node.tryGetContext("hostedZoneId");
 const hostedZoneName = app.node.tryGetContext("hostedZoneName");
 const certificateArn = app.node.tryGetContext("certificateArn");
 
-for (const [key, value] of Object.entries({ bedrockModelId, operatorPasscode, participantPassphrase })) {
+for (const [key, value] of Object.entries({ bedrockModelId, participantPassphrase })) {
   if (!value) {
     throw new Error(`Missing required --context ${key}=... (see README.md for the full deploy command)`);
   }
@@ -41,7 +41,7 @@ new WorkshopChatStack(app, `${workshopName}-WorkshopChat`, {
   workshopName,
   scale,
   bedrockModelId,
-  operatorPasscode,
+  adminUsername,
   participantPassphrase,
   participantCount,
   enableKnowledgeBase,
