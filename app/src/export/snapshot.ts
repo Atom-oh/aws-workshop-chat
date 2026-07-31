@@ -6,17 +6,39 @@ import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { GetCommand, PutCommand } from "@aws-sdk/lib-dynamodb";
 import { ddb } from "../db/client.js";
 import { TABLE_NAME, keys } from "../db/model.js";
-import { buildCurrentWorkbook } from "./xlsx.js";
+import { buildWorkbook, fetchExportData } from "./xlsx.js";
 
 const EXPORT_BUCKET = process.env.EXPORT_BUCKET;
 const EXPORT_INTERVAL_MS = 15 * 60 * 1000;
 const s3 = new S3Client({});
 
-export async function writeSnapshotNow(): Promise<{ s3Key: string; lastExportAt: string }> {
-  const wb = await buildCurrentWorkbook();
+export interface RowCounts {
+  Questions: number;
+  AI_Queries: number;
+  Participants: number;
+  Timeline: number;
+}
+
+export interface ExportStatus {
+  lastExportAt: string | null;
+  rowCounts: RowCounts | null;
+}
+
+export async function writeSnapshotNow(): Promise<{ s3Key: string; lastExportAt: string; rowCounts: RowCounts }> {
+  // Fetched once, reused for both the workbook and the operator-visible row counts (§8.1) — the
+  // count the operator sees is guaranteed to match what's actually in the file, not a second,
+  // possibly-stale query.
+  const data = await fetchExportData();
+  const wb = buildWorkbook(data);
   const buffer = await wb.xlsx.writeBuffer();
   const s3Key = "exports/latest.xlsx";
-  const lastExportAt = new Date().toISOString();
+  const lastExportAt = data.generatedAt;
+  const rowCounts: RowCounts = {
+    Questions: data.questions.length,
+    AI_Queries: data.aiQueries.length,
+    Participants: data.participants.length,
+    Timeline: data.timeline.length,
+  };
 
   if (EXPORT_BUCKET) {
     await s3.send(
@@ -30,14 +52,17 @@ export async function writeSnapshotNow(): Promise<{ s3Key: string; lastExportAt:
   }
 
   await ddb.send(
-    new PutCommand({ TableName: TABLE_NAME, Item: { ...keys.exportState(), lastExportAt, s3Key } }),
+    new PutCommand({
+      TableName: TABLE_NAME,
+      Item: { ...keys.exportState(), lastExportAt, s3Key, rowCounts },
+    }),
   );
-  return { s3Key, lastExportAt };
+  return { s3Key, lastExportAt, rowCounts };
 }
 
-export async function getLastExportAt(): Promise<string | null> {
+export async function getExportStatus(): Promise<ExportStatus> {
   const res = await ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: keys.exportState() }));
-  return res.Item?.lastExportAt ?? null;
+  return { lastExportAt: res.Item?.lastExportAt ?? null, rowCounts: res.Item?.rowCounts ?? null };
 }
 
 export function startSnapshotTimer() {

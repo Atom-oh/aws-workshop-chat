@@ -2,10 +2,14 @@
 // needs credentials: "include" — no token to attach by hand.
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
+  // Fastify's default JSON body parser 400s on a request that declares
+  // `Content-Type: application/json` but sends no body (FST_ERR_CTP_EMPTY_JSON_BODY) — every
+  // body-less POST here (exportNow, upvote, resolve, block/unblock, guide-doc actions) hit that
+  // until this stopped forcing the header on requests with nothing to parse.
   const res = await fetch(path, {
     ...init,
     credentials: "include",
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+    headers: init?.body ? { "Content-Type": "application/json", ...(init?.headers ?? {}) } : init?.headers,
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -89,12 +93,13 @@ export const api = {
   logout: () => req("/api/logout", { method: "POST" }),
 
   channels: () => req<{ channels: Channel[] }>("/api/channels"),
-  messages: (slug: string) => req<{ messages: Message[] }>(`/api/channels/${slug}/messages`),
+  messages: (slug: string, after?: string) =>
+    req<{ messages: Message[] }>(`/api/channels/${slug}/messages${after ? `?after=${after}` : ""}`),
   threadReplies: (rootUlid: string) => req<{ replies: Message[] }>(`/api/threads/${rootUlid}`),
-  postMessage: (slug: string, body: string, kind: "msg" | "question", threadId?: string) =>
+  postMessage: (slug: string, body: string, kind: "msg" | "question", threadId?: string, media?: string[]) =>
     req<{ message: Message }>(`/api/channels/${slug}/messages`, {
       method: "POST",
-      body: JSON.stringify({ body, kind, threadId }),
+      body: JSON.stringify({ body, kind, threadId, media }),
     }),
   upvote: (slug: string, ulid: string) =>
     req<{ upvotes: number }>(`/api/channels/${slug}/messages/${ulid}/upvote`, { method: "POST" }),
@@ -113,8 +118,12 @@ export const api = {
   block: (id: string) => req(`/api/participants/${id}/block`, { method: "POST" }),
   unblock: (id: string) => req(`/api/participants/${id}/unblock`, { method: "POST" }),
 
-  exportNow: () => req<{ s3Key: string; lastExportAt: string }>("/api/export/now", { method: "POST" }),
-  exportStatus: () => req<{ lastExportAt: string | null }>("/api/export/status"),
+  exportNow: () =>
+    req<{ s3Key: string; lastExportAt: string; rowCounts: Record<string, number> }>("/api/export/now", {
+      method: "POST",
+    }),
+  exportStatus: () =>
+    req<{ lastExportAt: string | null; rowCounts: Record<string, number> | null }>("/api/export/status"),
 
   roster: () => req<{ roster: { participantId: string; joinUrl: string }[]; participantPassphrase: string }>(
     "/api/operator/roster",
@@ -139,6 +148,15 @@ export const api = {
   toggleGuideDoc: (key: string) => req(`/api/operator/guide-docs/toggle?key=${encodeURIComponent(key)}`, { method: "POST" }),
   reindexGuideDocs: () => req<{ jobId: string; status: string }>("/api/operator/guide-docs/reindex", { method: "POST" }),
   reindexStatus: () => req<{ status: string | null; startedAt?: string }>("/api/operator/guide-docs/reindex-status"),
+};
+
+export const upload = {
+  presign: (filename: string, contentType: string, sizeBytes: number) =>
+    req<{ url: string; key: string }>("/api/uploads/presign", {
+      method: "POST",
+      body: JSON.stringify({ filename, contentType, sizeBytes }),
+    }),
+  downloadUrl: (key: string) => req<{ url: string }>(`/api/media/url?key=${encodeURIComponent(key)}`),
 };
 
 export function wsUrl(channel: string): string {

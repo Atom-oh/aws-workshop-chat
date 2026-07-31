@@ -95,6 +95,19 @@ export class WorkshopChatStack extends Stack {
       authFlows: { adminUserPassword: true },
     });
 
+    // Role membership lives in Cognito groups, not a naming convention or a single hardcoded
+    // username — the credentials provisioner adds every user to exactly one of these at
+    // creation time, and the app checks group membership at login instead of comparing against
+    // a fixed adminUsername string.
+    const adminGroup = new cognito.CfnUserPoolGroup(this, "AdminGroup", {
+      userPoolId: userPool.userPoolId,
+      groupName: "admin",
+    });
+    const participantGroup = new cognito.CfnUserPoolGroup(this, "ParticipantGroup", {
+      userPoolId: userPool.userPoolId,
+      groupName: "participant",
+    });
+
     // One secret, two jobs: the credentials-provider Lambda uses it to derive each participant's
     // Cognito ID/password (§5.1), and the app container reuses the exact same value as its
     // session-token signing secret (SESSION_SECRET below). That lets the operator console
@@ -163,7 +176,10 @@ export class WorkshopChatStack extends Stack {
     );
     taskRole.addToPolicy(
       new iam.PolicyStatement({
-        actions: ["cognito-idp:AdminInitiateAuth"],
+        // AdminInitiateAuth verifies the password; AdminListGroupsForUser checks which of
+        // admin/participant the authenticated user belongs to (role now comes from Cognito
+        // group membership, not a hardcoded adminUsername comparison).
+        actions: ["cognito-idp:AdminInitiateAuth", "cognito-idp:AdminListGroupsForUser"],
         resources: [userPool.userPoolArn],
       }),
     );
@@ -192,6 +208,8 @@ export class WorkshopChatStack extends Stack {
         EXPORT_BUCKET: exportsBucket.bucketName,
         COGNITO_USER_POOL_ID: userPool.userPoolId,
         COGNITO_CLIENT_ID: userPoolClient.userPoolClientId,
+        COGNITO_ADMIN_GROUP: adminGroup.groupName!,
+        COGNITO_PARTICIPANT_GROUP: participantGroup.groupName!,
         BEDROCK_MODEL_ID: props.bedrockModelId,
         ...(knowledgeBase
           ? { BEDROCK_KB_ID: knowledgeBase.knowledgeBaseId, BEDROCK_KB_DATA_SOURCE_ID: knowledgeBase.dataSourceId }
@@ -283,6 +301,7 @@ export class WorkshopChatStack extends Stack {
       "cognito-idp:AdminGetUser",
       "cognito-idp:AdminCreateUser",
       "cognito-idp:AdminSetUserPassword",
+      "cognito-idp:AdminAddUserToGroup",
     );
     credentialSeed.grantRead(credentialsFn);
     operatorPassword.grantRead(credentialsFn);
@@ -293,7 +312,7 @@ export class WorkshopChatStack extends Stack {
     const provider = new customResources.Provider(this, "CredentialsProviderResource", {
       onEventHandler: credentialsFn,
     });
-    new CustomResource(this, "Credentials", {
+    const credentialsResource = new CustomResource(this, "Credentials", {
       serviceToken: provider.serviceToken,
       properties: {
         UserPoolId: userPool.userPoolId,
@@ -306,8 +325,13 @@ export class WorkshopChatStack extends Stack {
         ParticipantCount: props.participantCount,
         AdminUsername: props.adminUsername,
         AdminPasswordArn: operatorPassword.secretArn,
+        AdminGroupName: adminGroup.groupName,
+        ParticipantGroupName: participantGroup.groupName,
       },
     });
+    // AdminAddUserToGroup needs the group to already exist — CfnUserPoolGroup isn't referenced
+    // by ARN/attribute above, so there's no implicit dependency edge without this.
+    credentialsResource.node.addDependency(adminGroup, participantGroup);
 
     // ---------- Outputs (§10) ----------
     new CfnOutput(this, "AppUrl", { value: `https://${appHostname}` });
@@ -321,6 +345,10 @@ export class WorkshopChatStack extends Stack {
     new CfnOutput(this, "OperatorCredentialsCommand", {
       value: `aws secretsmanager get-secret-value --region ${this.region} --secret-id ${operatorPassword.secretArn} --query SecretString --output text`,
     });
+    // Lets `scripts/gen-links.ts` re-derive join links from the command line without guessing
+    // the CDK-generated secret name — same seed the app container and the credentials
+    // provisioner both already use (see the comment on `credentialSeed` above).
+    new CfnOutput(this, "CredentialSeedArn", { value: credentialSeed.secretArn });
     if (knowledgeBase) {
       // Ingestion is not automatic on upload — this is the exact command to re-run after every
       // guide change (see README "Guide documents").

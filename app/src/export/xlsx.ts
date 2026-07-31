@@ -47,11 +47,18 @@ export const PARTICIPANTS_COLUMNS = [
 
 export const TIMELINE_COLUMNS = ["ts", "participantId", "event", "channel", "refId", "labStep"] as const;
 
+// Not part of §8.2's fixed contract — added so a truncated export (a page-size bug, a query
+// that silently stopped early) shows up as a visibly wrong row count instead of looking
+// complete. §8.1's absolute rule is "the export is trustworthy," which a bare 4-sheet file
+// can't prove on its own.
+export const META_COLUMNS = ["sheet", "rowCount"] as const;
+
 export interface ExportData {
   questions: Array<Record<(typeof QUESTIONS_COLUMNS)[number], unknown>>;
   aiQueries: Array<Record<(typeof AI_QUERIES_COLUMNS)[number], unknown>>;
   participants: Array<Record<(typeof PARTICIPANTS_COLUMNS)[number], unknown>>;
   timeline: Array<Record<(typeof TIMELINE_COLUMNS)[number], unknown>>;
+  generatedAt: string;
 }
 
 function addSheet<T extends Record<string, unknown>>(
@@ -72,6 +79,13 @@ export function buildWorkbook(data: ExportData): ExcelJS.Workbook {
   addSheet(wb, "AI_Queries", AI_QUERIES_COLUMNS, data.aiQueries);
   addSheet(wb, "Participants", PARTICIPANTS_COLUMNS, data.participants);
   addSheet(wb, "Timeline", TIMELINE_COLUMNS, data.timeline);
+  addSheet(wb, "Meta", META_COLUMNS, [
+    { sheet: "generatedAt", rowCount: data.generatedAt },
+    { sheet: "Questions", rowCount: data.questions.length },
+    { sheet: "AI_Queries", rowCount: data.aiQueries.length },
+    { sheet: "Participants", rowCount: data.participants.length },
+    { sheet: "Timeline", rowCount: data.timeline.length },
+  ]);
   return wb;
 }
 
@@ -133,7 +147,13 @@ export async function fetchExportData(): Promise<ExportData> {
     labStep: e.labStep,
   }));
 
-  return { questions, aiQueries: aiQueryRows, participants: participantRows, timeline };
+  return {
+    questions,
+    aiQueries: aiQueryRows,
+    participants: participantRows,
+    timeline,
+    generatedAt: new Date().toISOString(),
+  };
 }
 
 export async function buildCurrentWorkbook(): Promise<ExcelJS.Workbook> {

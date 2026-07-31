@@ -1,5 +1,13 @@
 import { ulid, decodeTime } from "ulid";
-import { GetCommand, PutCommand, QueryCommand, ScanCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import {
+  GetCommand,
+  PutCommand,
+  QueryCommand,
+  ScanCommand,
+  UpdateCommand,
+  type QueryCommandInput,
+  type ScanCommandInput,
+} from "@aws-sdk/lib-dynamodb";
 import { ddb } from "./client.js";
 import {
   TABLE_NAME,
@@ -17,6 +25,32 @@ import {
 
 function isoFromUlid(id: string): string {
   return new Date(decodeTime(id)).toISOString();
+}
+
+// DynamoDB caps a single Query/Scan response at 1MB regardless of `Limit` — these two page
+// through `LastEvaluatedKey` until it's exhausted so export reads (Timeline, Participants,
+// AI_Queries, and unbounded Messages reads) never silently truncate at that boundary. Only used
+// where the caller wants "everything" — screen-render reads keep their own small `Limit`.
+async function queryAll<T = Record<string, unknown>>(input: Omit<QueryCommandInput, "ExclusiveStartKey">): Promise<T[]> {
+  const items: T[] = [];
+  let ExclusiveStartKey: QueryCommandInput["ExclusiveStartKey"];
+  do {
+    const res = await ddb.send(new QueryCommand({ ...input, ExclusiveStartKey }));
+    items.push(...((res.Items ?? []) as T[]));
+    ExclusiveStartKey = res.LastEvaluatedKey;
+  } while (ExclusiveStartKey);
+  return items;
+}
+
+async function scanAll<T = Record<string, unknown>>(input: Omit<ScanCommandInput, "ExclusiveStartKey">): Promise<T[]> {
+  const items: T[] = [];
+  let ExclusiveStartKey: ScanCommandInput["ExclusiveStartKey"];
+  do {
+    const res = await ddb.send(new ScanCommand({ ...input, ExclusiveStartKey }));
+    items.push(...((res.Items ?? []) as T[]));
+    ExclusiveStartKey = res.LastEvaluatedKey;
+  } while (ExclusiveStartKey);
+  return items;
 }
 
 // ---------- Channels ----------
@@ -145,17 +179,26 @@ export async function postThreadReply(rootUlid: string, input: {
   return item;
 }
 
-export async function listMessages(channel: string, limit = 100) {
-  const res = await ddb.send(
-    new QueryCommand({
-      TableName: TABLE_NAME,
-      KeyConditionExpression: "pk = :pk AND begins_with(sk, :prefix)",
-      ExpressionAttributeValues: { ":pk": `CHANNEL#${channel}`, ":prefix": "MSG#" },
-      ScanIndexForward: true,
-      Limit: limit,
-    }),
-  );
-  return res.Items ?? [];
+export async function listMessages(channel: string, opts: { limit?: number; after?: string } = {}) {
+  // `after` (a message ulid) drives the client's reconnect backfill: SK is `MSG#<ulid>` and
+  // ulids are lexically time-sortable, so "> that SK" is exactly "everything since I last saw".
+  const afterSk = opts.after ? `MSG#${opts.after}` : undefined;
+  const input: QueryCommandInput = {
+    TableName: TABLE_NAME,
+    KeyConditionExpression: afterSk ? "pk = :pk AND sk > :after" : "pk = :pk AND begins_with(sk, :prefix)",
+    ExpressionAttributeValues: afterSk
+      ? { ":pk": `CHANNEL#${channel}`, ":after": afterSk }
+      : { ":pk": `CHANNEL#${channel}`, ":prefix": "MSG#" },
+    ScanIndexForward: true,
+  };
+  // A caller-supplied limit (screen render) is one page and stops there by design. No limit
+  // (reconnect backfill, and the export path below) means "everything" — page through fully so
+  // a channel with >1MB of history doesn't silently drop rows past that boundary.
+  if (opts.limit) {
+    const res = await ddb.send(new QueryCommand({ ...input, Limit: opts.limit }));
+    return res.Items ?? [];
+  }
+  return queryAll(input);
 }
 
 export async function listThreadReplies(rootUlid: string) {
@@ -245,15 +288,13 @@ export async function resolveQuestion(channel: string, messageUlid: string, resp
 }
 
 export async function listQuestionsByStatus(status: QuestionStatus) {
-  const res = await ddb.send(
-    new QueryCommand({
-      TableName: TABLE_NAME,
-      KeyConditionExpression: "pk = :pk",
-      ExpressionAttributeValues: { ":pk": `QSTATUS#${status}` },
-      ScanIndexForward: false, // highest upvotes first
-    }),
-  );
-  return (res.Items ?? []).filter((i) => i.messageId);
+  const items = await queryAll({
+    TableName: TABLE_NAME,
+    KeyConditionExpression: "pk = :pk",
+    ExpressionAttributeValues: { ":pk": `QSTATUS#${status}` },
+    ScanIndexForward: false, // highest upvotes first
+  });
+  return items.filter((i: any) => i.messageId);
 }
 
 export async function softDeleteMessage(channel: string, messageUlid: string) {
@@ -304,14 +345,14 @@ export async function setParticipantBlocked(participantId: string, blocked: bool
 export async function listParticipants(): Promise<ParticipantItem[]> {
   // ponytail: no participant-list GSI; N is bounded (<=500) so a table Scan filtered to
   // SK = META is acceptable for a 3-day app. Upgrade to a GSI if N grows past low thousands.
-  const res = await ddb.send(
-    new ScanCommand({
-      TableName: TABLE_NAME,
-      FilterExpression: "sk = :meta AND begins_with(pk, :prefix)",
-      ExpressionAttributeValues: { ":meta": "META", ":prefix": "USER#" },
-    }),
-  );
-  return (res.Items ?? []) as ParticipantItem[];
+  // scanAll pages through LastEvaluatedKey — a single Scan page still caps at 1MB regardless
+  // of item count, and Timeline/AI_Queries rows sharing this table make hitting that boundary
+  // realistic well under 500 participants.
+  return scanAll<ParticipantItem>({
+    TableName: TABLE_NAME,
+    FilterExpression: "sk = :meta AND begins_with(pk, :prefix)",
+    ExpressionAttributeValues: { ":meta": "META", ":prefix": "USER#" },
+  });
 }
 
 // ---------- AI queries ----------
@@ -355,26 +396,21 @@ export async function setAiFeedback(participantId: string, aiUlid: string, feedb
 }
 
 export async function listAiQueriesForParticipant(participantId: string): Promise<AiQueryItem[]> {
-  const res = await ddb.send(
-    new QueryCommand({
-      TableName: TABLE_NAME,
-      KeyConditionExpression: "pk = :pk AND begins_with(sk, :prefix)",
-      ExpressionAttributeValues: { ":pk": `USER#${participantId}`, ":prefix": "AI#" },
-    }),
-  );
-  return (res.Items ?? []) as AiQueryItem[];
+  return queryAll<AiQueryItem>({
+    TableName: TABLE_NAME,
+    KeyConditionExpression: "pk = :pk AND begins_with(sk, :prefix)",
+    ExpressionAttributeValues: { ":pk": `USER#${participantId}`, ":prefix": "AI#" },
+  });
 }
 
 export async function listAllAiQueries(): Promise<AiQueryItem[]> {
-  // Same scan-is-fine-at-this-scale reasoning as listParticipants above.
-  const res = await ddb.send(
-    new ScanCommand({
-      TableName: TABLE_NAME,
-      FilterExpression: "begins_with(sk, :prefix)",
-      ExpressionAttributeValues: { ":prefix": "AI#" },
-    }),
-  );
-  return (res.Items ?? []) as AiQueryItem[];
+  // Same scan-is-fine-at-this-scale reasoning as listParticipants above; scanAll pages through
+  // LastEvaluatedKey for the same 1MB-page-cap reason.
+  return scanAll<AiQueryItem>({
+    TableName: TABLE_NAME,
+    FilterExpression: "begins_with(sk, :prefix)",
+    ExpressionAttributeValues: { ":prefix": "AI#" },
+  });
 }
 
 // ---------- Guide document reindexing ----------
@@ -430,15 +466,15 @@ export async function recordTimelineEvent(input: {
 }
 
 export async function listTimeline(): Promise<TimelineItem[]> {
-  const res = await ddb.send(
-    new QueryCommand({
-      TableName: TABLE_NAME,
-      KeyConditionExpression: "pk = :pk AND begins_with(sk, :prefix)",
-      ExpressionAttributeValues: { ":pk": "WORKSHOP", ":prefix": "EVT#" },
-      ScanIndexForward: true,
-    }),
-  );
-  return (res.Items ?? []) as TimelineItem[];
+  // One event per login/question/upload/resolve/ai_query — easily thousands of rows across a
+  // 500-participant, 3-day workshop, all in the single `WORKSHOP` partition. queryAll pages
+  // through LastEvaluatedKey so that doesn't silently truncate at DynamoDB's 1MB page cap.
+  return queryAll<TimelineItem>({
+    TableName: TABLE_NAME,
+    KeyConditionExpression: "pk = :pk AND begins_with(sk, :prefix)",
+    ExpressionAttributeValues: { ":pk": "WORKSHOP", ":prefix": "EVT#" },
+    ScanIndexForward: true,
+  });
 }
 
 // ---------- AI daily quota ----------

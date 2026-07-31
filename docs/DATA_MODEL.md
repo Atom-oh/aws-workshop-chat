@@ -13,7 +13,7 @@ contract; every key here exists to serve one of the four sheets with a single qu
 | Question status index (denormalized) | `QSTATUS#open` \| `QSTATUS#resolved` | `<upvotesPadded>#<ulid>` | `body`, `channel`, `labStep`, `resolvedAt?`, `responder?` — written alongside every question Message so the operator "unresolved" view and large-mode upvote sort are one query |
 | Participant | `USER#<participantId>` | `META` | `displayName`, `pwHash`, `questionCount`, `aiQueryCount`, `firstSeen`, `lastSeen`, `blocked` |
 | AI query | `USER#<participantId>` | `AI#<ulid>` | `query`, `refDocs[]`, `answerSummary`, `feedback` (`up`\|`down`\|null), `labStep`, `tokensIn`, `tokensOut` |
-| Timeline event | `USER#<participantId>` | `EVT#<ulid>` | `event` (`login`\|`upload`\|`question`\|`resolve`\|`ai_query`), `channel?`, `refId?`, `labStep` |
+| Timeline event | `WORKSHOP` | `EVT#<ulid>` | `event` (`login`\|`upload`\|`question`\|`resolve`\|`ai_query`), `participantId`, `channel?`, `refId?`, `labStep` |
 | Lab step (singleton) | `WORKSHOP` | `LABSTEP` | `step`, `updatedAt` |
 | Export state (singleton) | `WORKSHOP` | `EXPORT` | `lastExportAt`, `s3Key` |
 
@@ -43,10 +43,10 @@ A participant is "silent" (Participants sheet) when `questionCount == 0 && aiQue
 
 | Sheet (§8.2) | Query |
 |---|---|
-| `Questions` | GSI1, both `QSTATUS#open` and `QSTATUS#resolved` partitions |
-| `AI_Queries` | For each `USER#*`, query SK prefix `AI#` |
-| `Participants` | Query PK prefix `USER#`, SK `= META` |
-| `Timeline` | GSI2, single partition `WORKSHOP`, SK prefix `EVT#` |
+| `Questions` | Query `pk = CHANNEL#<slug>` for each channel, filter `kind = question` (base table, no index) |
+| `AI_Queries` | For each `USER#<participantId>`, query SK prefix `AI#` |
+| `Participants` | Scan filtered to `sk = META AND begins_with(pk, USER#)` — see "No secondary indexes" above |
+| `Timeline` | Query `pk = WORKSHOP`, SK prefix `EVT#` — single partition, no index |
 
 Column rename from spec: `accountId` → **`participantId`** everywhere in the export. Identities
 here are synthetic 12-digit IDs generated at deploy time (see §14-3 decision in the plan) — they
@@ -54,6 +54,11 @@ resemble AWS account IDs but map to no real account, so the export never contain
 
 ## Local development
 
-`docker-compose.yml` runs `amazon/dynamodb-local` alongside the app so every table/GSI above can
+`docker-compose.yml` runs `amazon/dynamodb-local` alongside the app so the whole table above can
 be exercised offline. `app/src/db/model.ts` is the single source of truth for key construction —
 nothing else in the codebase builds a PK/SK string by hand.
+
+Every export/operator query pages through DynamoDB's `LastEvaluatedKey` in full (`queryAll`/
+`scanAll` in `app/src/db/repo.ts`) rather than trusting a single Query/Scan response — that
+response caps at 1MB regardless of `Limit`, and this table's largest partitions (`WORKSHOP`'s
+Timeline rows, and any one channel's Messages) can exceed it well before item counts look large.

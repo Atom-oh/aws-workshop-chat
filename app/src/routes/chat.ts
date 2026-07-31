@@ -48,7 +48,11 @@ export async function chatRoutes(app: FastifyInstance) {
 
   app.get("/api/channels/:slug/messages", async (req, reply) => {
     if (!requireSession(req, reply)) return;
-    reply.send({ messages: await listMessages((req.params as any).slug) });
+    // `after` (last-seen message ulid) lets a reconnecting client backfill only what it missed
+    // instead of re-fetching everything (see web/src/Chat.tsx's reconnect handler).
+    const { after } = req.query as { after?: string };
+    const slug = (req.params as any).slug;
+    reply.send({ messages: await listMessages(slug, after ? { after } : { limit: 100 }) });
   });
 
   app.get("/api/threads/:rootUlid", async (req, reply) => {

@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { requireOperator } from "../auth/session.js";
 import { buildCurrentWorkbook } from "../export/xlsx.js";
-import { writeSnapshotNow, getLastExportAt } from "../export/snapshot.js";
+import { writeSnapshotNow, getExportStatus } from "../export/snapshot.js";
 
 export async function exportRoutes(app: FastifyInstance) {
   // "지금 내보내기" (§8.1): always available, always reflects current state.
@@ -22,6 +22,6 @@ export async function exportRoutes(app: FastifyInstance) {
 
   app.get("/api/export/status", async (req, reply) => {
     if (!requireOperator(req, reply)) return;
-    reply.send({ lastExportAt: await getLastExportAt() });
+    reply.send(await getExportStatus());
   });
 }

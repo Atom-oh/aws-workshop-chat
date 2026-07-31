@@ -141,8 +141,17 @@ aws secretsmanager get-secret-value --region <region> --secret-id <OperatorPassw
   --query SecretString --output text
 ```
 
-Re-running `cdk deploy` never resets this password once the account exists (idempotent, same
-as participant provisioning) — if you need to rotate it, delete the Cognito user and re-deploy.
+Every `cdk deploy` re-syncs this password to whatever's currently in Secrets Manager (unlike
+participant provisioning, which only fills in the delta) — useful after a manual rotation.
+
+**Role comes from Cognito group membership, not a hardcoded username.** The credentials
+provisioner puts the operator account in the `admin` group and every participant account in the
+`participant` group at creation time; `/api/login/operator` and `/api/login/password` both check
+group membership (`AdminListGroupsForUser`) after the password check succeeds, rather than
+comparing the username against `adminUsername` directly. A correct password for a user in the
+wrong group is rejected. This only applies to the two Cognito-backed login paths — the one-click
+`/j` join link and the shared-passphrase fallback never touch Cognito (see "Why Cognito is the
+credential source but not the request-time gate" above), so they're unaffected.
 
 ### Custom domain
 

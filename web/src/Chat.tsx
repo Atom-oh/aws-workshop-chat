@@ -1,8 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, wsUrl, type Channel, type Message, type Session } from "./api";
-import { avatarColor, renderBody } from "./format";
+import { api, upload, wsUrl, type Channel, type Message, type Session } from "./api";
+import { avatarColor } from "./format";
+import Markdown from "./Markdown";
 import { COLORS } from "./theme";
 import Composer from "./Composer";
+import Attachment from "./Attachment";
+import { formatBytes } from "./media";
+
+const ANNOUNCEMENTS_SLUG = "announcements";
+
+interface PendingAttachment {
+  key: string;
+  name: string;
+  sizeBytes: number;
+}
+
+async function uploadFile(file: File): Promise<PendingAttachment> {
+  const { url, key } = await upload.presign(file.name, file.type || "application/octet-stream", file.size);
+  await fetch(url, { method: "PUT", body: file, headers: { "Content-Type": file.type || "application/octet-stream" } });
+  return { key, name: file.name, sizeBytes: file.size };
+}
 
 function timeLabel(iso: string) {
   return new Date(iso).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
@@ -56,7 +73,8 @@ function MessageRow({ m, children }: { m: Message; children?: React.ReactNode })
             </span>
           )}
         </div>
-        <div style={{ fontSize: 14, lineHeight: 1.6, color: "rgba(255,255,255,.92)" }}>{renderBody(m.body)}</div>
+        <div style={{ fontSize: 14, lineHeight: 1.6, color: "rgba(255,255,255,.92)" }}><Markdown text={m.body} /></div>
+        {m.media?.map((key) => <Attachment key={key} mediaKey={key} />)}
         {children}
       </div>
     </div>
@@ -67,6 +85,7 @@ function ThreadPanel({ slug, message, onClose }: { slug: string; message: Messag
   const rootUlid = message.sk.replace("MSG#", "");
   const [replies, setReplies] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
 
   async function load() {
     setReplies((await api.threadReplies(rootUlid)).replies);
@@ -74,9 +93,10 @@ function ThreadPanel({ slug, message, onClose }: { slug: string; message: Messag
   useEffect(() => { load(); }, [rootUlid]);
 
   async function send() {
-    if (!draft.trim()) return;
-    await api.postMessage(slug, draft, "msg", rootUlid);
+    if (!draft.trim() && attachments.length === 0) return;
+    await api.postMessage(slug, draft, "msg", rootUlid, attachments.map((a) => a.key));
     setDraft("");
+    setAttachments([]);
     load();
   }
 
@@ -87,7 +107,7 @@ function ThreadPanel({ slug, message, onClose }: { slug: string; message: Messag
         <button onClick={onClose} style={{ width: 28, height: 28, border: 0, borderRadius: 8, background: "rgba(255,255,255,.07)", color: "rgba(255,255,255,.6)", cursor: "pointer" }}>×</button>
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: "16px 18px" }}>
-        <div style={{ fontSize: 14.5, lineHeight: 1.6, color: "#fff", marginBottom: 12 }}>{renderBody(message.body)}</div>
+        <div style={{ fontSize: 14.5, lineHeight: 1.6, color: "#fff", marginBottom: 12 }}><Markdown text={message.body} /></div>
         <div style={{ display: "flex", flexDirection: "column", gap: 14, borderTop: `1px solid ${COLORS.border}`, paddingTop: 14 }}>
           {replies.map((r) => (
             <div key={r.sk} style={{ display: "flex", gap: 10 }}>
@@ -99,7 +119,8 @@ function ThreadPanel({ slug, message, onClose }: { slug: string; message: Messag
                   <span style={{ fontSize: 12.5, fontWeight: 500 }}>참가자 ...{r.participantId.slice(-4)}</span>
                   <span style={{ fontSize: 11, color: "rgba(255,255,255,.3)", fontFamily: "ui-monospace,Menlo,monospace" }}>{timeLabel(r.createdAt)}</span>
                 </div>
-                <div style={{ fontSize: 13.5, lineHeight: 1.6, color: "rgba(255,255,255,.85)" }}>{renderBody(r.body)}</div>
+                <div style={{ fontSize: 13.5, lineHeight: 1.6, color: "rgba(255,255,255,.85)" }}><Markdown text={r.body} /></div>
+                {r.media?.map((key) => <Attachment key={key} mediaKey={key} />)}
               </div>
             </div>
           ))}
@@ -107,8 +128,29 @@ function ThreadPanel({ slug, message, onClose }: { slug: string; message: Messag
         </div>
       </div>
       <div style={{ flex: "none", padding: "12px 18px 16px" }}>
-        <Composer value={draft} onChange={setDraft} onSend={send} placeholder="답글 작성" />
+        <Composer
+          value={draft}
+          onChange={setDraft}
+          onSend={send}
+          placeholder="답글 작성"
+          onAttachFiles={(files) => Promise.all(Array.from(files).map(uploadFile)).then((added) => setAttachments((a) => [...a, ...added]))}
+          extra={attachments.length > 0 && <AttachmentChips attachments={attachments} onRemove={(key) => setAttachments((a) => a.filter((x) => x.key !== key))} />}
+        />
       </div>
+    </div>
+  );
+}
+
+function AttachmentChips({ attachments, onRemove }: { attachments: PendingAttachment[]; onRemove: (key: string) => void }) {
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+      {attachments.map((a) => (
+        <div key={a.key} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 8px", borderRadius: 999, background: "rgba(255,255,255,.08)", fontSize: 12 }}>
+          <span>📎 {a.name}</span>
+          <span style={{ color: COLORS.dim }}>{formatBytes(a.sizeBytes)}</span>
+          <button onClick={() => onRemove(a.key)} style={{ border: "none", background: "transparent", color: "rgba(255,255,255,.5)", cursor: "pointer", padding: 0, fontSize: 13 }}>×</button>
+        </div>
+      ))}
     </div>
   );
 }
@@ -132,7 +174,7 @@ function AiView({ history, aiQuery, setAiQuery, aiBusy, ask, onFeedback }: {
               background: "rgba(255,255,255,.03)", padding: "13px 15px",
             }}>
               <div style={{ fontSize: 14, lineHeight: 1.6, color: "#fff" }}>
-                {renderBody(h.answer)}
+                <Markdown text={h.answer} renderMermaid={!h.streaming} />
                 {h.streaming && <span style={{ opacity: 0.5 }}>▌</span>}
               </div>
               {!h.streaming && h.refDocs.length > 0 && (
@@ -176,12 +218,15 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
   const [labStep, setLabStep] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [asQuestion, setAsQuestion] = useState(false);
   const [selectedUlid, setSelectedUlid] = useState<string | null>(null);
   const [aiQuery, setAiQuery] = useState("");
   const [aiHistory, setAiHistory] = useState<AiEntry[]>([]);
   const [aiBusy, setAiBusy] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
+  const messagesRef = useRef<Message[]>([]);
+  messagesRef.current = messages;
 
   useEffect(() => {
     api.labStep().then((r) => setLabStep(r.step));
@@ -192,53 +237,98 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
     });
   }, []);
 
+  // Single Fargate task (§ws-hub) means a deploy or idle timeout drops every open socket at
+  // once — reconnect has to be automatic, and on reconnect the client backfills only what it
+  // missed (via the last message's ulid) rather than losing history or re-fetching everything.
   useEffect(() => {
     if (!active) return;
-    api.messages(active).then((r) => setMessages(r.messages));
+    let cancelled = false;
+    let retryDelayMs = 1000;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let isFirstConnect = true;
 
-    wsRef.current?.close();
-    const ws = new WebSocket(wsUrl(active));
-    ws.onmessage = (evt) => {
-      const data = JSON.parse(evt.data);
-      if (data.type === "message" && !data.message.threadId) {
-        setMessages((prev) => [...prev, data.message]);
-      } else if (data.type === "upvote") {
-        setMessages((prev) => prev.map((m) => (m.sk === `MSG#${data.ulid}` ? { ...m, upvotes: data.upvotes } : m)));
-      } else if (data.type === "resolved") {
-        setMessages((prev) => prev.map((m) => (m.sk === `MSG#${data.ulid}` ? { ...m, status: "resolved" } : m)));
-      } else if (data.type === "deleted") {
-        setMessages((prev) => prev.map((m) => (m.sk === `MSG#${data.ulid}` ? { ...m, deleted: true } : m)));
-      }
+    function lastSeenUlid(): string | undefined {
+      const msgs = messagesRef.current;
+      return msgs.length ? msgs[msgs.length - 1].sk.replace("MSG#", "") : undefined;
+    }
+
+    function connect() {
+      if (cancelled) return;
+      const sinceUlid = isFirstConnect ? undefined : lastSeenUlid();
+      const backfill = isFirstConnect
+        ? api.messages(active).then((r) => setMessages(r.messages))
+        : api.messages(active, sinceUlid).then((r) => {
+            if (!r.messages.length) return;
+            setMessages((prev) => {
+              const seen = new Set(prev.map((m) => m.sk));
+              return [...prev, ...r.messages.filter((m) => !seen.has(m.sk))];
+            });
+          });
+
+      backfill.then(() => {
+        if (cancelled) return;
+        const ws = new WebSocket(wsUrl(active));
+        ws.onopen = () => {
+          retryDelayMs = 1000; // reset backoff on a clean connection
+        };
+        ws.onmessage = (evt) => {
+          const data = JSON.parse(evt.data);
+          if (data.type === "message" && !data.message.threadId) {
+            setMessages((prev) => (prev.some((m) => m.sk === data.message.sk) ? prev : [...prev, data.message]));
+          } else if (data.type === "upvote") {
+            setMessages((prev) => prev.map((m) => (m.sk === `MSG#${data.ulid}` ? { ...m, upvotes: data.upvotes } : m)));
+          } else if (data.type === "resolved") {
+            setMessages((prev) => prev.map((m) => (m.sk === `MSG#${data.ulid}` ? { ...m, status: "resolved" } : m)));
+          } else if (data.type === "deleted") {
+            setMessages((prev) => prev.map((m) => (m.sk === `MSG#${data.ulid}` ? { ...m, deleted: true } : m)));
+          }
+        };
+        ws.onclose = () => {
+          if (cancelled) return;
+          isFirstConnect = false;
+          const jitter = Math.random() * 300;
+          retryTimer = setTimeout(connect, retryDelayMs + jitter);
+          retryDelayMs = Math.min(retryDelayMs * 2, 15_000);
+        };
+        wsRef.current = ws;
+      });
+    }
+
+    connect();
+    return () => {
+      cancelled = true;
+      clearTimeout(retryTimer);
+      wsRef.current?.close();
     };
-    wsRef.current = ws;
-    return () => ws.close();
   }, [active]);
 
   async function send() {
-    if (!draft.trim()) return;
+    if (!draft.trim() && attachments.length === 0) return;
     const isQuestions = active === "questions";
-    await api.postMessage(active, draft, isQuestions && asQuestion ? "question" : "msg");
+    await api.postMessage(active, draft, isQuestions && asQuestion ? "question" : "msg", undefined, attachments.map((a) => a.key));
     setDraft("");
+    setAttachments([]);
     setMessages((await api.messages(active)).messages);
   }
 
+  async function attachFiles(files: FileList) {
+    const uploaded = await Promise.all(Array.from(files).map(uploadFile));
+    setAttachments((a) => [...a, ...uploaded]);
+  }
+
   async function onPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
-    // ponytail: clipboard-image upload wires to the same presign endpoint the file picker would
-    // use; kept minimal here (paste -> presign -> PUT -> append URL to draft) rather than a
-    // separate dropzone component, since that's the one interaction §6.1 actually calls out.
     const item = Array.from(e.clipboardData.items).find((i) => i.type.startsWith("image/"));
     if (!item) return;
     const file = item.getAsFile();
     if (!file) return;
-    const presign = await fetch("/api/uploads/presign", {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contentType: file.type, sizeBytes: file.size }),
-    }).then((r) => r.json());
-    if (presign.error) return;
-    await fetch(presign.url, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
-    setDraft((d) => `${d}\n[image: ${presign.key}]`);
+    const added = await uploadFile(file);
+    setAttachments((a) => [...a, added]);
+  }
+
+  async function postAsAnnouncement(m: Message) {
+    await api.postMessage(ANNOUNCEMENTS_SLUG, m.body, "msg", undefined, m.media);
+    setView("channel");
+    setActive(ANNOUNCEMENTS_SLUG);
   }
 
   async function ask() {
@@ -359,6 +449,9 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
                           {m.kind === "question" && session.role === "operator" && m.status !== "resolved" && (
                             <button onClick={(e) => { e.stopPropagation(); api.resolve(active, ulid); }} style={{ border: "none", background: "transparent", color: "#FFB84D", fontSize: 12.5, cursor: "pointer", padding: 0 }}>해결로 표시</button>
                           )}
+                          {session.role === "operator" && active !== ANNOUNCEMENTS_SLUG && (
+                            <button onClick={(e) => { e.stopPropagation(); postAsAnnouncement(m); }} style={{ border: "none", background: "transparent", color: "rgba(255,255,255,.6)", fontSize: 12.5, cursor: "pointer", padding: 0 }}>📌 공지로 올리기</button>
+                          )}
                           {session.role === "operator" && (
                             <button onClick={(e) => { e.stopPropagation(); api.deleteMessage(active, ulid); }} style={{ border: "none", background: "transparent", color: "rgba(255,255,255,.4)", fontSize: 12.5, cursor: "pointer", padding: 0 }}>삭제</button>
                           )}
@@ -375,7 +468,15 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
                     질문으로 등록
                   </label>
                 )}
-                <Composer value={draft} onChange={setDraft} onSend={send} onPaste={onPaste} placeholder="메시지 입력 (이미지 붙여넣기 가능)" />
+                <Composer
+                  value={draft}
+                  onChange={setDraft}
+                  onSend={send}
+                  onPaste={onPaste}
+                  onAttachFiles={attachFiles}
+                  placeholder="메시지 입력 (붙여넣기 또는 📎로 파일 첨부)"
+                  extra={attachments.length > 0 && <AttachmentChips attachments={attachments} onRemove={(key) => setAttachments((a) => a.filter((x) => x.key !== key))} />}
+                />
               </div>
             </>
           )}

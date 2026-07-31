@@ -6,6 +6,7 @@ import {
   AI_QUERIES_COLUMNS,
   PARTICIPANTS_COLUMNS,
   TIMELINE_COLUMNS,
+  META_COLUMNS,
   type ExportData,
 } from "../src/export/xlsx.js";
 
@@ -72,12 +73,13 @@ const seed: ExportData = {
   timeline: [
     { ts: "2026-07-30T08:55:00.000Z", participantId: "100000000001", event: "login", channel: "", refId: "", labStep: "intro" },
   ],
+  generatedAt: "2026-07-30T09:15:00.000Z",
 };
 
-test("produces exactly the four §8.2 sheets", () => {
+test("produces the four §8.2 sheets plus a Meta sheet", () => {
   const wb = buildWorkbook(seed);
   const names = wb.worksheets.map((s) => s.name);
-  assert.deepEqual(names, ["Questions", "AI_Queries", "Participants", "Timeline"]);
+  assert.deepEqual(names, ["Questions", "AI_Queries", "Participants", "Timeline", "Meta"]);
 });
 
 test("each sheet has exactly the fixed column contract, in order", () => {
@@ -89,6 +91,21 @@ test("each sheet has exactly the fixed column contract, in order", () => {
   assert.deepEqual(headerRow("AI_Queries"), [...AI_QUERIES_COLUMNS]);
   assert.deepEqual(headerRow("Participants"), [...PARTICIPANTS_COLUMNS]);
   assert.deepEqual(headerRow("Timeline"), [...TIMELINE_COLUMNS]);
+  assert.deepEqual(headerRow("Meta"), [...META_COLUMNS]);
+});
+
+test("Meta sheet's row counts match the other sheets' actual row counts — the evidence that no sheet was silently truncated", () => {
+  const wb = buildWorkbook(seed);
+  const metaRows = wb.getWorksheet("Meta")!;
+  const bySheet = new Map<string, unknown>();
+  for (let r = 2; r <= metaRows.rowCount; r++) {
+    const row = metaRows.getRow(r);
+    bySheet.set(row.getCell(1).value as string, row.getCell(2).value);
+  }
+  assert.equal(bySheet.get("Questions"), seed.questions.length);
+  assert.equal(bySheet.get("AI_Queries"), seed.aiQueries.length);
+  assert.equal(bySheet.get("Participants"), seed.participants.length);
+  assert.equal(bySheet.get("Timeline"), seed.timeline.length);
 });
 
 test("row counts match input, including archived-channel and silent-participant rows", () => {
@@ -109,7 +126,13 @@ test("archived channel's question still appears in the export", () => {
 });
 
 test("empty data still produces four sheets with headers only", () => {
-  const wb = buildWorkbook({ questions: [], aiQueries: [], participants: [], timeline: [] });
+  const wb = buildWorkbook({
+    questions: [],
+    aiQueries: [],
+    participants: [],
+    timeline: [],
+    generatedAt: "2026-07-30T09:15:00.000Z",
+  });
   for (const name of ["Questions", "AI_Queries", "Participants", "Timeline"]) {
     assert.equal(wb.getWorksheet(name)!.rowCount, 1);
   }

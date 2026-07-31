@@ -6,6 +6,7 @@ import {
   AdminGetUserCommand,
   AdminCreateUserCommand,
   AdminSetUserPasswordCommand,
+  AdminAddUserToGroupCommand,
   TooManyRequestsException,
 } from "@aws-sdk/client-cognito-identity-provider";
 import { CloudWatchClient, PutMetricDataCommand } from "@aws-sdk/client-cloudwatch";
@@ -52,7 +53,7 @@ async function userExists(userPoolId: string, participantId: string): Promise<bo
   }
 }
 
-async function createUser(userPoolId: string, participantId: string, password: string): Promise<void> {
+async function createUser(userPoolId: string, participantId: string, password: string, groupName: string): Promise<void> {
   await withBackoff(() =>
     cognito.send(
       new AdminCreateUserCommand({
@@ -72,15 +73,21 @@ async function createUser(userPoolId: string, participantId: string, password: s
       }),
     ),
   );
+  // Role membership is Cognito group membership, checked at login (see app/src/auth/cognito.ts)
+  // instead of a hardcoded username comparison — assign it once, at creation. Existing users
+  // (userExists === true) are assumed to already be in the right group from their own creation.
+  await withBackoff(() =>
+    cognito.send(new AdminAddUserToGroupCommand({ UserPoolId: userPoolId, Username: participantId, GroupName: groupName })),
+  );
 }
 
 /** Wires the pure derivation logic to real Cognito calls for one deploy/re-deploy. */
-async function runProvisioning(count: number, seed: string, userPoolId: string) {
+async function runProvisioning(count: number, seed: string, userPoolId: string, participantGroupName: string) {
   return provisionCredentials({
     seed,
     count,
     userExists: (id) => userExists(userPoolId, id),
-    createUser: (id, pw) => createUser(userPoolId, id, pw),
+    createUser: (id, pw) => createUser(userPoolId, id, pw, participantGroupName),
   });
 }
 
@@ -92,6 +99,8 @@ interface CfnRequest {
     ParticipantCount: string;
     AdminUsername: string;
     AdminPasswordArn: string;
+    AdminGroupName: string;
+    ParticipantGroupName: string;
   };
 }
 
@@ -101,7 +110,8 @@ export async function handler(event: CfnRequest) {
     return { PhysicalResourceId: "credentials-provider" };
   }
 
-  const { UserPoolId, SeedArn, ParticipantCount, AdminUsername, AdminPasswordArn } = event.ResourceProperties;
+  const { UserPoolId, SeedArn, ParticipantCount, AdminUsername, AdminPasswordArn, AdminGroupName, ParticipantGroupName } =
+    event.ResourceProperties;
   const count = Number(ParticipantCount);
   const [seed, adminPassword] = await Promise.all([fetchSecret(SeedArn), fetchSecret(AdminPasswordArn)]);
 
@@ -116,7 +126,7 @@ export async function handler(event: CfnRequest) {
       ),
     );
   } else {
-    await createUser(UserPoolId, AdminUsername, adminPassword);
+    await createUser(UserPoolId, AdminUsername, adminPassword, AdminGroupName);
   }
 
   // ponytail: a plain sequential-with-retry loop, not Step Functions Map — this is one Lambda
@@ -126,7 +136,7 @@ export async function handler(event: CfnRequest) {
   // Lambda's 15-min cap. If AdminCreateUser exhausts its backoff and throws, the whole
   // invocation fails, CFN reports the failure, and the next `cdk deploy` retries from scratch —
   // idempotent, so nothing already created gets duplicated or lost.
-  const result = await runProvisioning(count, seed, UserPoolId);
+  const result = await runProvisioning(count, seed, UserPoolId, ParticipantGroupName);
 
   // Every index 0..count-1 is either newly created or already existed, so created+skipped
   // equals `count` on a successful run — this metric exists to catch the failure case where

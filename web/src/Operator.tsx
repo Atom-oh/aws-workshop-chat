@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, wsUrl, type AiQuery, type Attendance, type Channel, type GuideDoc, type Message, type NoShow } from "./api";
-import { avatarColor, renderBody } from "./format";
+import { avatarColor } from "./format";
+import Markdown from "./Markdown";
 import { COLORS } from "./theme";
 import Composer from "./Composer";
 
@@ -119,7 +120,7 @@ function QuestionsView({
                     <span style={{ fontSize: 11, padding: "1px 7px", borderRadius: 6, background: "rgba(255,255,255,.07)", color: "rgba(255,255,255,.55)", fontFamily: "ui-monospace,Menlo,monospace" }}>step {q.labStep}</span>
                     <span style={{ fontSize: 11.5, color: "rgba(255,255,255,.3)", fontFamily: "ui-monospace,Menlo,monospace" }}>{timeLabel(q.createdAt)}</span>
                   </div>
-                  <div style={{ fontSize: 14.5, lineHeight: 1.55, color: "rgba(255,255,255,.94)" }}>{renderBody(q.body)}</div>
+                  <div style={{ fontSize: 14.5, lineHeight: 1.55, color: "rgba(255,255,255,.94)" }}><Markdown text={q.body} /></div>
                 </div>
                 <div style={{ flex: "none", display: "flex", alignItems: "flex-start", gap: 6 }}>
                   {isOpen && (
@@ -176,7 +177,7 @@ function ThreadPanel({ channel, ulid, message, onClose }: { channel: string; uli
         <button onClick={onClose} style={{ width: 28, height: 28, border: 0, borderRadius: 8, background: "rgba(255,255,255,.07)", color: "rgba(255,255,255,.6)", cursor: "pointer" }}>×</button>
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: "16px 18px" }}>
-        <div style={{ fontSize: 14.5, lineHeight: 1.6, color: "#fff", marginBottom: 12 }}>{renderBody(message.body)}</div>
+        <div style={{ fontSize: 14.5, lineHeight: 1.6, color: "#fff", marginBottom: 12 }}><Markdown text={message.body} /></div>
         <div style={{ display: "flex", flexDirection: "column", gap: 14, borderTop: `1px solid ${COLORS.border}`, paddingTop: 14 }}>
           {replies.map((r) => (
             <div key={r.sk} style={{ display: "flex", gap: 10 }}>
@@ -188,7 +189,7 @@ function ThreadPanel({ channel, ulid, message, onClose }: { channel: string; uli
                   <span style={{ fontSize: 12.5, fontWeight: 500 }}>참가자 ...{r.participantId.slice(-4)}</span>
                   <span style={{ fontSize: 11, color: "rgba(255,255,255,.3)", fontFamily: "ui-monospace,Menlo,monospace" }}>{timeLabel(r.createdAt)}</span>
                 </div>
-                <div style={{ fontSize: 13.5, lineHeight: 1.6, color: "rgba(255,255,255,.85)" }}>{renderBody(r.body)}</div>
+                <div style={{ fontSize: 13.5, lineHeight: 1.6, color: "rgba(255,255,255,.85)" }}><Markdown text={r.body} /></div>
               </div>
             </div>
           ))}
@@ -245,7 +246,7 @@ function ChannelView({ slug, name }: { slug: string; name: string }) {
                 <span style={{ fontSize: 13.5, fontWeight: 700 }}>참가자 ...{m.participantId.slice(-4)}</span>
                 <span style={{ fontSize: 11, color: "rgba(255,255,255,.3)", fontFamily: "ui-monospace,Menlo,monospace" }}>{timeLabel(m.createdAt)}</span>
               </div>
-              <div style={{ fontSize: 14, lineHeight: 1.6, color: "rgba(255,255,255,.9)" }}>{renderBody(m.body)}</div>
+              <div style={{ fontSize: 14, lineHeight: 1.6, color: "rgba(255,255,255,.9)" }}><Markdown text={m.body} /></div>
             </div>
           </div>
         ))}
@@ -445,6 +446,7 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
   const [reindex, setReindex] = useState<{ status: string | null; startedAt?: string }>({ status: null });
   const [attendance, setAttendance] = useState<Attendance | null>(null);
   const [lastExport, setLastExport] = useState<string | null>(null);
+  const [exportRowCounts, setExportRowCounts] = useState<Record<string, number> | null>(null);
   const [exporting, setExporting] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<any>(null);
@@ -466,6 +468,7 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
     setLabStepState(step.step);
     setChannels(chans.channels);
     setLastExport(exportStatus.lastExportAt);
+    setExportRowCounts(exportStatus.rowCounts);
     await loadQuestions(chans.channels);
   }
 
@@ -493,7 +496,9 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
     setExporting(true);
     try {
       await api.exportNow();
-      setLastExport((await api.exportStatus()).lastExportAt);
+      const status = await api.exportStatus();
+      setLastExport(status.lastExportAt);
+      setExportRowCounts(status.rowCounts);
       showToast("xlsx 내보내기 완료");
     } finally {
       setExporting(false);
@@ -540,6 +545,13 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
             <div style={{ fontSize: 11, color: COLORS.dim }}>마지막 내보내기</div>
             <div style={{ fontSize: 12, fontFamily: "ui-monospace,Menlo,monospace" }}>{lastExport ? timeLabel(lastExport) : "아직 없음"}</div>
+            {exportRowCounts && (
+              // Evidence the export isn't silently truncated (DynamoDB's 1MB page cap) — matches
+              // the Meta sheet inside the xlsx itself, so what's on screen is what's in the file.
+              <div style={{ fontSize: 10.5, color: "rgba(255,255,255,.35)", fontFamily: "ui-monospace,Menlo,monospace" }}>
+                Q{exportRowCounts.Questions} · AI{exportRowCounts.AI_Queries} · P{exportRowCounts.Participants} · T{exportRowCounts.Timeline}
+              </div>
+            )}
           </div>
           <button onClick={exportNow} disabled={exporting} style={{ height: 34, padding: "0 18px", border: 0, borderRadius: 999, background: COLORS.orange, color: COLORS.bgDark, font: "700 13px/1 inherit", cursor: "pointer" }}>
             {exporting ? "내보내는 중…" : "지금 내보내기"}
