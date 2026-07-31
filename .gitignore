@@ -1,0 +1,11 @@
+node_modules/
+dist/
+build/
+cdk.out/
+*.log
+.env
+web/dist/
+.dynamodb/
+
+# cdk context cache — leaks the deploy account ID/region; regenerate with `cdk synth`
+infra/cdk.context.json

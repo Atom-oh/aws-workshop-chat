@@ -1,0 +1,45 @@
+title: "aws-workshop-chat — Workshop Central Account (3-day, RemovalPolicy DESTROY)"
+external:
+  - {id: participants, icon: users, label: "Participants (web/mobile)"}
+  - {id: operator, icon: user, label: "Operator (console)"}
+edge:
+  - {id: cf, icon: cloudfront, label: "CloudFront + WAF"}
+region:
+  label: "AWS Region (deploy-time parameter)"
+  stages:
+    - name: "Ingress"
+      services:
+        - {id: alb, icon: alb, label: "ALB"}
+    - name: "Compute"
+      services:
+        - {id: ecs, icon: ecs, label: "ECS Fargate (1 task)"}
+        - {id: ecr, icon: "arch:Amazon-Elastic-Container-Registry", label: "ECR"}
+    - name: "Data"
+      services:
+        - {id: ddb, icon: dynamodb, label: "DynamoDB"}
+        - {id: s3, icon: s3, label: "S3 (media/guide/exports)"}
+    - name: "Identity"
+      services:
+        - {id: cognito, icon: "arch:Amazon-Cognito", label: "Cognito"}
+    - name: "AI"
+      services:
+        - {id: bedrock, icon: bedrock, label: "Bedrock"}
+    - name: "Provisioning"
+      services:
+        - {id: credfn, icon: lambda, label: "credentials-provisioner"}
+        - {id: seed, icon: secrets, label: "Secrets Manager"}
+        - {id: metric, icon: cloudwatch, label: "CloudWatch"}
+flows:
+  - {from: participants, to: cf, label: "HTTPS"}
+  - {from: operator, to: cf, label: "HTTPS"}
+  - {from: cf, to: alb, label: "origin"}
+  - {from: alb, to: ecs, label: "route"}
+  - {from: ecr, to: ecs, label: "pull image", kind: async}
+  - {from: ecs, to: ddb, label: "read/write"}
+  - {from: ecs, to: s3, label: "read/write"}
+  - {from: ecs, to: cognito, label: "AdminInitiateAuth"}
+  - {from: ecs, to: bedrock, label: "invoke"}
+  - {from: credfn, to: cognito, label: "AdminCreateUser"}
+  - {from: seed, to: credfn, label: "derive seed"}
+  - {from: seed, to: ecs, label: "session secret"}
+  - {from: credfn, to: metric, label: "PutMetricData"}

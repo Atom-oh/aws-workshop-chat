@@ -1,0 +1,20 @@
+{
+  "name": "aws-workshop-chat",
+  "private": true,
+  "version": "1.0.0",
+  "workspaces": [
+    "app",
+    "infra",
+    "web"
+  ],
+  "scripts": {
+    "test": "npm test --workspace=app",
+    "dev": "docker compose up --build",
+    "loadtest": "tsx test/load.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "ws": "^8.18.0",
+    "@types/ws": "^8.5.13"
+  }
+}
