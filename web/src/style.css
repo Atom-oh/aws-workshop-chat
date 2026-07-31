@@ -28,11 +28,57 @@ input, textarea, select {
 .row { display: flex; gap: 8px; align-items: center; }
 .tabs { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
 .tabs button.active { background: #2563eb; color: white; border-color: #2563eb; }
+
+/* plain message (AI answers) — Slack-style rows use .msg-row below */
 .msg { border-bottom: 1px solid #eee; padding: 10px 0; }
 .msg .meta { font-size: 12px; color: #667085; margin-bottom: 4px; }
-.msg .body { white-space: pre-wrap; word-break: break-word; }
+.body { white-space: pre-wrap; word-break: break-word; }
+
 .badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; margin-left: 6px; }
 .badge.resolved { background: #ecfdf3; color: #067647; }
 .notice { background: #fff8e1; border: 1px solid #fde68a; padding: 10px; border-radius: 8px; font-size: 13px; margin-bottom: 12px; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eee; }
+
+/* Slack-style message row: avatar + content, hover-revealed action bar */
+.msg-row { display: flex; gap: 10px; padding: 6px 8px; border-radius: 6px; position: relative; }
+.msg-row:hover { background: #f8f8f9; }
+.avatar {
+  flex: 0 0 32px; width: 32px; height: 32px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  color: white; font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
+}
+.msg-content { flex: 1; min-width: 0; }
+.msg-content .meta { font-size: 12px; color: #667085; margin-bottom: 2px; }
+.msg-author { font-weight: 700; font-size: 14px; color: #1a1a1a; margin-right: 6px; }
+.msg-time { font-size: 12px; color: #8a8f98; }
+.msg-actions {
+  position: absolute; top: 2px; right: 6px; display: flex; gap: 2px;
+  opacity: 0; background: white; border: 1px solid #e4e7ec; border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.08); padding: 2px;
+}
+.msg-row:hover .msg-actions { opacity: 1; }
+.msg-actions button { border: none; background: transparent; padding: 3px 8px; font-size: 12px; border-radius: 4px; }
+.msg-actions button:hover { background: #f0f1f3; }
+
+/* Code — inline chip + fenced block, Slack-ish */
+.inline-code {
+  background: #f0f1f3; color: #c0341d; padding: 1px 5px; border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.9em;
+}
+.codeblock {
+  background: #1e1f22; color: #e6e6e6; padding: 10px 12px; border-radius: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px;
+  overflow-x: auto; margin: 6px 0; white-space: pre;
+}
+
+/* Slack-style composer: borderless textarea inside a bordered box, autogrow, hint + send button below */
+.composer-wrap { border: 1px solid #d0d5dd; border-radius: 8px; padding: 8px; margin-top: 12px; }
+.composer-wrap textarea {
+  border: none; resize: none; padding: 4px; max-height: 240px; overflow-y: auto;
+}
+.composer-wrap textarea:focus { outline: none; }
+.composer-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 4px; }
+.composer-footer .hint { font-size: 12px; color: #8a8f98; }
+.checkbox-row { padding: 4px 4px 0; font-size: 13px; }
+.thread-card { margin-left: 24px; background: #fafbfc; }
