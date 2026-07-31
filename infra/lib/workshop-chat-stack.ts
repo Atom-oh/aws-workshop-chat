@@ -34,7 +34,8 @@ export interface WorkshopChatStackProps extends StackProps {
   workshopName: string;
   scale: "small" | "large";
   bedrockModelId: string;
-  operatorPasscode: string;
+  /** Cognito username for the one operator account; a random password is generated at deploy. */
+  adminUsername: string;
   participantPassphrase: string;
   participantCount: number;
   enableKnowledgeBase: boolean;
@@ -100,6 +101,19 @@ export class WorkshopChatStack extends Stack {
     // appears in the stack template or CloudFormation console.
     const credentialSeed = new secretsmanager.Secret(this, "CredentialSeed", {
       generateSecretString: { excludePunctuation: true, passwordLength: 40 },
+    });
+
+    // The one operator account. Unlike participants (derived from credentialSeed, many of them,
+    // recreated as participantCount grows), there's exactly one of these, so it gets its own
+    // secret rather than a derivation — the value never appears in the stack template, only
+    // retrievable via `aws secretsmanager get-secret-value` (see the OperatorCredentialsCommand
+    // output).
+    const operatorPassword = new secretsmanager.Secret(this, "OperatorPassword", {
+      generateSecretString: {
+        passwordLength: 20,
+        excludeCharacters: '"@/\\\'` ',
+        requireEachIncludedType: true, // Cognito's default password policy needs all four classes
+      },
     });
 
     // ---------- Knowledge Base (S3 Vectors) — optional, region-gated ----------
@@ -169,7 +183,7 @@ export class WorkshopChatStack extends Stack {
         BEDROCK_MODEL_ID: props.bedrockModelId,
         ...(knowledgeBase ? { BEDROCK_KB_ID: knowledgeBase.knowledgeBaseId } : {}),
         SCALE: props.scale,
-        OPERATOR_PASSCODE: props.operatorPasscode,
+        ADMIN_USERNAME: props.adminUsername,
         PARTICIPANT_PASSPHRASE: props.participantPassphrase,
         PARTICIPANT_COUNT: String(props.participantCount),
         PORT: "3000",
@@ -257,6 +271,7 @@ export class WorkshopChatStack extends Stack {
       "cognito-idp:AdminSetUserPassword",
     );
     credentialSeed.grantRead(credentialsFn);
+    operatorPassword.grantRead(credentialsFn);
     credentialsFn.addToRolePolicy(
       new iam.PolicyStatement({ actions: ["cloudwatch:PutMetricData"], resources: ["*"] }),
     );
@@ -270,6 +285,8 @@ export class WorkshopChatStack extends Stack {
         UserPoolId: userPool.userPoolId,
         Seed: credentialSeed.secretValue.unsafeUnwrap(), // scoped to this Lambda's own event payload, not logged by CFN
         ParticipantCount: props.participantCount,
+        AdminUsername: props.adminUsername,
+        AdminPassword: operatorPassword.secretValue.unsafeUnwrap(), // same scoping as Seed above
       },
     });
 
@@ -280,6 +297,10 @@ export class WorkshopChatStack extends Stack {
     new CfnOutput(this, "GuideBucketPath", { value: `s3://${guideBucket.bucketName}/guide/` });
     new CfnOutput(this, "CloudWatchMetricsLink", {
       value: `https://console.aws.amazon.com/cloudwatch/home?region=${this.region}#metricsV2:namespace=WorkshopChat`,
+    });
+    new CfnOutput(this, "OperatorUsername", { value: props.adminUsername });
+    new CfnOutput(this, "OperatorCredentialsCommand", {
+      value: `aws secretsmanager get-secret-value --region ${this.region} --secret-id ${operatorPassword.secretArn} --query SecretString --output text`,
     });
     if (knowledgeBase) {
       // Ingestion is not automatic on upload — this is the exact command to re-run after every
