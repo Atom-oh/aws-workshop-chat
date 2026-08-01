@@ -195,8 +195,11 @@ export async function listMessages(channel: string, opts: { limit?: number; afte
   // (reconnect backfill, and the export path below) means "everything" — page through fully so
   // a channel with >1MB of history doesn't silently drop rows past that boundary.
   if (opts.limit) {
-    const res = await ddb.send(new QueryCommand({ ...input, Limit: opts.limit }));
-    return res.Items ?? [];
+    // A limited fetch has no `after` cursor (see chat.ts), so this is always the initial page
+    // load — that must be the most RECENT `limit` messages, not the oldest. Query descending
+    // then reverse back to chronological order for display.
+    const res = await ddb.send(new QueryCommand({ ...input, ScanIndexForward: false, Limit: opts.limit }));
+    return (res.Items ?? []).reverse();
   }
   return queryAll(input);
 }

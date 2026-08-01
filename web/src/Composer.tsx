@@ -9,6 +9,7 @@ export default function Composer({
   onChange,
   onSend,
   onPaste,
+  onAttachFiles,
   placeholder,
   extra,
 }: {
@@ -16,10 +17,12 @@ export default function Composer({
   onChange: (v: string) => void;
   onSend: () => void;
   onPaste?: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
+  onAttachFiles?: (files: FileList) => void;
   placeholder: string;
   extra?: React.ReactNode;
 }) {
   const ref = useRef<HTMLTextAreaElement | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const el = ref.current;
@@ -53,12 +56,35 @@ export default function Composer({
       />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
         <span style={{ fontSize: 11.5, color: "rgba(255,255,255,.45)" }}>Enter로 보내기 · Shift+Enter로 줄바꿈 · `code` · ```코드블록```</span>
-        <button
-          onClick={onSend}
-          style={{ height: 30, padding: "0 14px", border: 0, borderRadius: 999, background: "#FF9900", color: "#0F1B2D", font: "700 12.5px/1 inherit", cursor: "pointer" }}
-        >
-          보내기
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          {onAttachFiles && (
+            <>
+              <input
+                ref={fileRef}
+                type="file"
+                multiple
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  if (e.target.files?.length) onAttachFiles(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+              <button
+                onClick={() => fileRef.current?.click()}
+                title="파일 첨부"
+                style={{ height: 30, width: 30, border: "1px solid rgba(255,255,255,.14)", borderRadius: 999, background: "transparent", color: "rgba(255,255,255,.7)", cursor: "pointer", fontSize: 14 }}
+              >
+                📎
+              </button>
+            </>
+          )}
+          <button
+            onClick={onSend}
+            style={{ height: 30, padding: "0 14px", border: 0, borderRadius: 999, background: "#FF9900", color: "#0F1B2D", font: "700 12.5px/1 inherit", cursor: "pointer" }}
+          >
+            보내기
+          </button>
+        </div>
       </div>
     </div>
   );

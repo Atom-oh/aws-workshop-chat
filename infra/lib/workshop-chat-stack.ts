@@ -376,6 +376,13 @@ export class WorkshopChatStack extends Stack {
       dataType: "float32",
       dimension: EMBEDDING_DIMENSION,
       distanceMetric: "cosine",
+      // Without this, Bedrock stores each chunk's raw text as FILTERABLE metadata (key
+      // AMAZON_BEDROCK_TEXT), which S3 Vectors caps at 2048 bytes per vector — a single chunk of
+      // dense-UTF-8 (Korean) HTML content blows past that easily and the whole document fails
+      // ingestion with "Filterable metadata must have at most 2048 bytes". Marking it
+      // non-filterable moves it into the separate 40KB-per-vector allowance instead. Can only be
+      // set at index creation — not updatable after the fact.
+      metadataConfiguration: { nonFilterableMetadataKeys: ["AMAZON_BEDROCK_TEXT"] },
     });
 
     const kbRole = new iam.Role(this, "KnowledgeBaseRole", {

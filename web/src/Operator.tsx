@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, wsUrl, type AiQuery, type Attendance, type Channel, type GuideDoc, type Message, type NoShow } from "./api";
-import { avatarColor } from "./format";
+import { avatarColor, avatarInitials, displayName } from "./format";
 import Markdown from "./Markdown";
 import { COLORS } from "./theme";
 import Composer from "./Composer";
+import Resizer from "./Resizer";
+import { useResizableWidth } from "./useResizableWidth";
 
 type View = "questions" | "channel" | "ai" | "docs" | "attendance";
 
@@ -115,7 +117,7 @@ function QuestionsView({
                         ✓ 해결
                       </span>
                     )}
-                    <span style={{ fontSize: 12.5, fontWeight: 500, color: "rgba(255,255,255,.8)" }}>참가자 ...{q.participantId.slice(-4)}</span>
+                    <span style={{ fontSize: 12.5, fontWeight: 500, color: "rgba(255,255,255,.8)" }}>{displayName(q.participantId)}</span>
                     <span style={{ fontSize: 11.5, color: "rgba(255,255,255,.35)" }}>#{q.channel}</span>
                     <span style={{ fontSize: 11, padding: "1px 7px", borderRadius: 6, background: "rgba(255,255,255,.07)", color: "rgba(255,255,255,.55)", fontFamily: "ui-monospace,Menlo,monospace" }}>step {q.labStep}</span>
                     <span style={{ fontSize: 11.5, color: "rgba(255,255,255,.3)", fontFamily: "ui-monospace,Menlo,monospace" }}>{timeLabel(q.createdAt)}</span>
@@ -151,7 +153,9 @@ function QuestionsView({
 
 // ---------- Thread panel ----------
 
-function ThreadPanel({ channel, ulid, message, onClose }: { channel: string; ulid: string; message: Message; onClose: () => void }) {
+function ThreadPanel({ channel, ulid, message, onClose, width, onResize }: {
+  channel: string; ulid: string; message: Message; onClose: () => void; width: number; onResize: (deltaX: number) => void;
+}) {
   const [replies, setReplies] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
 
@@ -168,7 +172,9 @@ function ThreadPanel({ channel, ulid, message, onClose }: { channel: string; uli
   }
 
   return (
-    <div style={{ width: 392, minWidth: 320, flex: "0 1 392px", background: COLORS.bgDark, borderLeft: `1px solid ${COLORS.border}`, display: "flex", flexDirection: "column", minHeight: 0 }}>
+    <>
+      <Resizer onResize={(dx) => onResize(-dx)} />
+      <div style={{ width, flex: "none", background: COLORS.bgDark, borderLeft: `1px solid ${COLORS.border}`, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <div style={{ flex: "none", display: "flex", alignItems: "center", gap: 10, padding: "0 14px 0 18px", height: 52, borderBottom: `1px solid ${COLORS.border}` }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14.5, fontWeight: 700 }}>스레드</div>
@@ -182,11 +188,11 @@ function ThreadPanel({ channel, ulid, message, onClose }: { channel: string; uli
           {replies.map((r) => (
             <div key={r.sk} style={{ display: "flex", gap: 10 }}>
               <div style={{ width: 28, height: 28, flex: "none", borderRadius: 7, background: avatarColor(r.participantId), display: "flex", alignItems: "center", justifyContent: "center", font: "700 10px/1 inherit" }}>
-                {r.participantId.slice(-2)}
+                {avatarInitials(r.participantId)}
               </div>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
-                  <span style={{ fontSize: 12.5, fontWeight: 500 }}>참가자 ...{r.participantId.slice(-4)}</span>
+                  <span style={{ fontSize: 12.5, fontWeight: 500 }}>{displayName(r.participantId)}</span>
                   <span style={{ fontSize: 11, color: "rgba(255,255,255,.3)", fontFamily: "ui-monospace,Menlo,monospace" }}>{timeLabel(r.createdAt)}</span>
                 </div>
                 <div style={{ fontSize: 13.5, lineHeight: 1.6, color: "rgba(255,255,255,.85)" }}><Markdown text={r.body} /></div>
@@ -199,7 +205,8 @@ function ThreadPanel({ channel, ulid, message, onClose }: { channel: string; uli
       <div style={{ flex: "none", padding: "12px 18px 16px" }}>
         <Composer value={draft} onChange={setDraft} onSend={send} placeholder="운영자로 답변…" />
       </div>
-    </div>
+      </div>
+    </>
   );
 }
 
@@ -239,11 +246,11 @@ function ChannelView({ slug, name }: { slug: string; name: string }) {
         {messages.filter((m) => !m.deleted).map((m) => (
           <div key={m.sk} style={{ display: "flex", gap: 11, padding: "7px 10px", margin: "0 -10px", borderRadius: 8 }}>
             <div style={{ width: 32, height: 32, flex: "none", borderRadius: 8, background: avatarColor(m.participantId), display: "flex", alignItems: "center", justifyContent: "center", font: "700 11px/1 inherit" }}>
-              {m.participantId.slice(-2)}
+              {avatarInitials(m.participantId)}
             </div>
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
-                <span style={{ fontSize: 13.5, fontWeight: 700 }}>참가자 ...{m.participantId.slice(-4)}</span>
+                <span style={{ fontSize: 13.5, fontWeight: 700 }}>{displayName(m.participantId)}</span>
                 <span style={{ fontSize: 11, color: "rgba(255,255,255,.3)", fontFamily: "ui-monospace,Menlo,monospace" }}>{timeLabel(m.createdAt)}</span>
               </div>
               <div style={{ fontSize: 14, lineHeight: 1.6, color: "rgba(255,255,255,.9)" }}><Markdown text={m.body} /></div>
@@ -283,7 +290,7 @@ function AiLogView({ queries }: { queries: AiQuery[] }) {
         {queries.map((a) => (
           <div key={a.sk} style={{ border: `1px solid ${a.feedback === "down" ? "rgba(221,52,76,.45)" : "rgba(255,255,255,.09)"}`, borderRadius: 12, background: "rgba(255,255,255,.03)", padding: "13px 15px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 8 }}>
-              <span style={{ fontSize: 12.5, fontWeight: 500, color: "rgba(255,255,255,.8)" }}>참가자 ...{a.participantId.slice(-4)}</span>
+              <span style={{ fontSize: 12.5, fontWeight: 500, color: "rgba(255,255,255,.8)" }}>{displayName(a.participantId)}</span>
               <span style={{ fontSize: 11, padding: "1px 7px", borderRadius: 6, background: "rgba(255,255,255,.07)", color: "rgba(255,255,255,.55)", fontFamily: "ui-monospace,Menlo,monospace" }}>step {a.labStep}</span>
               <span style={{ fontSize: 11.5, color: "rgba(255,255,255,.3)", fontFamily: "ui-monospace,Menlo,monospace" }}>{timeLabel(a.createdAt)}</span>
               <div style={{ flex: 1 }} />
@@ -450,6 +457,8 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
   const [exporting, setExporting] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<any>(null);
+  const [sidebarWidth, resizeSidebar] = useResizableWidth("wc:opSidebarWidth", 264, 200, 460);
+  const [threadWidth, resizeThread] = useResizableWidth("wc:opThreadWidth", 392, 280, 720);
 
   function showToast(msg: string) {
     clearTimeout(toastTimer.current);
@@ -564,7 +573,7 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
 
       <div style={{ flex: 1, display: "flex", minHeight: 0, overflowX: "auto" }}>
         {/* Sidebar */}
-        <div style={{ width: 264, flex: "none", background: COLORS.bgDark, borderRight: `1px solid ${COLORS.border}`, display: "flex", flexDirection: "column", overflowY: "auto" }}>
+        <div style={{ width: sidebarWidth, flex: "none", background: COLORS.bgDark, borderRight: `1px solid ${COLORS.border}`, display: "flex", flexDirection: "column", overflowY: "auto" }}>
           <div
             onClick={() => setView("attendance")}
             style={{ margin: "14px 12px 8px", padding: 12, borderRadius: 12, background: "rgba(221,52,76,.14)", border: "1px solid rgba(221,52,76,.45)", cursor: "pointer" }}
@@ -609,6 +618,7 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
             </div>
           </div>
         </div>
+        <Resizer onResize={resizeSidebar} />
 
         {/* Main */}
         <div style={{ flex: 1, minWidth: 540, display: "flex", flexDirection: "column", background: COLORS.bg }}>
@@ -639,7 +649,7 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
         </div>
 
         {selected && view === "questions" && (
-          <ThreadPanel channel={selected.channel} ulid={selected.sk.replace("MSG#", "")} message={selected} onClose={() => setSelectedId(null)} />
+          <ThreadPanel channel={selected.channel} ulid={selected.sk.replace("MSG#", "")} message={selected} onClose={() => setSelectedId(null)} width={threadWidth} onResize={resizeThread} />
         )}
       </div>
 

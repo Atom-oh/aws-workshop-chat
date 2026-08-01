@@ -105,9 +105,13 @@ export async function operatorRoutes(app: FastifyInstance) {
       .filter((id) => !joinedIds.has(id))
       .map((participantId, i) => ({ participantId, index: i, joinUrl: buildJoinUrl(req, participantId) }));
     reply.send({
+      // noShowCount is `noShows.length`, not `expectedCount - joinedCount` — the passphrase
+      // login fallback lets anyone join with a self-chosen numeric ID outside the deterministic
+      // roster (participantCount=0 during setup, or just extra test logins), so joined can
+      // exceed expected and the subtraction would go negative.
       expectedCount: config.participantCount,
       joinedCount: joined.length,
-      noShowCount: config.participantCount - joined.length,
+      noShowCount: noShows.length,
       noShows,
     });
   });

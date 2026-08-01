@@ -9,3 +9,8 @@ web/dist/
 
 # cdk context cache — leaks the deploy account ID/region; regenerate with `cdk synth`
 infra/cdk.context.json
+
+# ad-hoc debug screenshots and Playwright MCP session artifacts, not source
+.playwright-mcp/
+image.png
+Screenshot *.png
