@@ -86,12 +86,10 @@ export interface Attendance {
 
 export const api = {
   session: () => req<{ session: Session | null }>("/api/session"),
-  loginPassphrase: (participantId: string, passphrase: string) =>
-    req("/api/login/passphrase", { method: "POST", body: JSON.stringify({ participantId, passphrase }) }),
-  loginPassword: (participantId: string, password: string) =>
-    req("/api/login/password", { method: "POST", body: JSON.stringify({ participantId, password }) }),
-  loginOperator: (username: string, password: string) =>
-    req("/api/login/operator", { method: "POST", body: JSON.stringify({ username, password }) }),
+  // Single Cognito login for both participant and operator accounts — role comes back from
+  // group membership server-side, not from which login form the user picked.
+  loginId: (id: string, password: string) =>
+    req("/api/login/id", { method: "POST", body: JSON.stringify({ id, password }) }),
   logout: () => req("/api/logout", { method: "POST" }),
 
   channels: () => req<{ channels: Channel[] }>("/api/channels"),

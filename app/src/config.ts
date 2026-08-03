@@ -9,8 +9,8 @@ export const config = {
   sessionSecret: process.env.SESSION_SECRET ?? "dev-secret-do-not-use-in-production",
   participantPassphrase: process.env.PARTICIPANT_PASSPHRASE ?? "dev-passphrase",
   // The one operator account, provisioned in Cognito at deploy time (infra/lib/workshop-chat-stack.ts)
-  // with a random password — the /api/login/operator route just checks the authenticated
-  // Cognito username matches this before granting the operator role.
+  // with a random password. Role for any Cognito login (/api/login/id) comes from group
+  // membership, not from comparing the typed username against this value.
   adminUsername: process.env.ADMIN_USERNAME ?? "admin@ws",
   scale: (process.env.SCALE as "small" | "large") ?? "small",
   participantCount: Number(process.env.PARTICIPANT_COUNT ?? 10),

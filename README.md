@@ -61,8 +61,8 @@ Fargate task behind an ALB is the smallest thing that actually holds a WebSocket
 
 Cognito remains the deploy-time source of truth for participant credentials (created idempotently
 by the credentials-provisioner Lambda, `infra/lambda/credentials-handler.ts`). But the one-click
-`/j` join link and the shared-passphrase fallback both use the app's **own** HMAC-signed session
-tokens, not a Cognito JWT round-trip — see `app/src/auth/token.ts` and `app/src/auth/session.ts`.
+`/j` join link uses the app's **own** HMAC-signed session tokens, not a Cognito JWT round-trip —
+see `app/src/auth/token.ts` and `app/src/auth/session.ts`.
 Re-verifying against Cognito on every page load would add IdP latency for zero benefit on a
 disposable, 3-day app. A **single secret** does both jobs: the credentials-provisioner Lambda uses
 it to *derive* each participant's Cognito ID/password, and the app container reuses the exact same
@@ -146,12 +146,13 @@ participant provisioning, which only fills in the delta) — useful after a manu
 
 **Role comes from Cognito group membership, not a hardcoded username.** The credentials
 provisioner puts the operator account in the `admin` group and every participant account in the
-`participant` group at creation time; `/api/login/operator` and `/api/login/password` both check
-group membership (`AdminListGroupsForUser`) after the password check succeeds, rather than
-comparing the username against `adminUsername` directly. A correct password for a user in the
-wrong group is rejected. This only applies to the two Cognito-backed login paths — the one-click
-`/j` join link and the shared-passphrase fallback never touch Cognito (see "Why Cognito is the
-credential source but not the request-time gate" above), so they're unaffected.
+`participant` group at creation time; a single login form/endpoint (`/api/login/id`) serves
+both — it checks group membership (`AdminListGroupsForUser`) after the password check succeeds
+to decide the role, rather than comparing the username against
+`adminUsername` directly. A correct password for a user in the wrong group is rejected. This
+only applies to that one Cognito-backed login path — the one-click `/j` join link never touches
+Cognito at request time (see "Why Cognito is the credential source but not the request-time
+gate" above), so it's unaffected.
 
 ### Custom domain
 
@@ -229,8 +230,9 @@ presign, xlsx export, and lab-step tagging are all testable with **no AWS accoun
 exception is AI chat: Bedrock has no local emulator, so `/api/ai/ask` needs real AWS credentials
 exported into your shell before `docker compose up` (and a real `BEDROCK_MODEL_ID`).
 
-Fallback login for local dev: participant ID `100000000001`, passphrase `dev-passphrase`.
-Operator passcode: `dev-operator`.
+Login is Cognito-backed only (`/api/login/id`) — there is no passphrase fallback anymore, so
+local dev needs real AWS credentials exported into your shell (same as the AI chat exception
+above) to reach a real Cognito user pool, even just to log in and exercise chat/threads/upvotes.
 
 ### Tests
 

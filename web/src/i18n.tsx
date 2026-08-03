@@ -121,9 +121,7 @@ const DICT: Record<string, string> = {
   // Login
   "참가자 간에는 익명입니다. 운영자는 참가자에게 발급된 참가자 ID를 확인할 수 있습니다.":
     "Participants are anonymous to each other. The operator can look up the participant ID issued to each participant.",
-  "공용 패스프레이즈": "Shared passphrase",
-  "개별 비밀번호": "Individual password",
-  "운영자 아이디": "Operator username",
+  "ID (참가자 ID 또는 운영자 아이디)": "ID (participant ID or operator username)",
   "없음": "None",
   "최대 50MB, 이미지는 3.75MB": "max 50MB, images 3.75MB",
   "운영": "Ops",
