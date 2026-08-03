@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { api } from "./api";
 import { COLORS } from "./theme";
+import { useLocale, LocaleToggle } from "./i18n";
 
 // §5.4 fallback UI. The primary path (§5.4 one-click /j link) never renders this component —
 // the browser is already redirected and cookie'd before React even mounts.
 export default function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
+  const { t } = useLocale();
   const [mode, setMode] = useState<"passphrase" | "password" | "operator">("passphrase");
   const [participantId, setParticipantId] = useState("");
   const [secret, setSecret] = useState("");
@@ -38,16 +40,17 @@ export default function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
       <div style={{ width: 380, background: COLORS.bgDark, border: `1px solid ${COLORS.border}`, borderRadius: 16, padding: 28 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
           <div style={{ width: 30, height: 30, borderRadius: 7, background: COLORS.orange, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 15, color: COLORS.bgDark }}>W</div>
-          <h2 style={{ margin: 0, fontSize: 18 }}>Workshop Chat</h2>
+          <h2 style={{ margin: 0, fontSize: 18, flex: 1 }}>Workshop Chat</h2>
+          <LocaleToggle />
         </div>
         <p style={{ fontSize: 12.5, color: COLORS.dim, lineHeight: 1.5, marginBottom: 16 }}>
-          참가자 간에는 익명입니다. 운영자는 참가자에게 발급된 참가자 ID를 확인할 수 있습니다.
+          {t("참가자 간에는 익명입니다. 운영자는 참가자에게 발급된 참가자 ID를 확인할 수 있습니다.")}
         </p>
         <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
           {[
-            ["passphrase", "공용 패스프레이즈"],
-            ["password", "개별 비밀번호"],
-            ["operator", "운영자"],
+            ["passphrase", t("공용 패스프레이즈")],
+            ["password", t("개별 비밀번호")],
+            ["operator", t("운영자")],
           ].map(([key, label]) => (
             <button
               key={key}
@@ -64,7 +67,7 @@ export default function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
         </div>
         <form onSubmit={submit}>
           <div style={{ marginBottom: 12 }}>
-            <label style={labelStyle}>{mode === "operator" ? "운영자 아이디" : "참가자 ID"}</label>
+            <label style={labelStyle}>{mode === "operator" ? t("운영자 아이디") : t("참가자 ID")}</label>
             <input
               style={inputStyle}
               value={participantId}
@@ -73,7 +76,7 @@ export default function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
             />
           </div>
           <div style={{ marginBottom: 14 }}>
-            <label style={labelStyle}>{mode === "operator" ? "비밀번호" : mode === "passphrase" ? "공용 패스프레이즈" : "비밀번호"}</label>
+            <label style={labelStyle}>{mode === "operator" ? t("비밀번호") : mode === "passphrase" ? t("공용 패스프레이즈") : t("비밀번호")}</label>
             <input style={inputStyle} type="password" value={secret} onChange={(e) => setSecret(e.target.value)} />
           </div>
           {error && <p style={{ color: COLORS.redText, fontSize: 13 }}>{error}</p>}
@@ -82,7 +85,7 @@ export default function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
             disabled={busy}
             style={{ width: "100%", height: 38, border: 0, borderRadius: 999, background: COLORS.orange, color: COLORS.bgDark, fontWeight: 700, fontSize: 14, cursor: "pointer" }}
           >
-            입장
+            {t("입장")}
           </button>
         </form>
       </div>

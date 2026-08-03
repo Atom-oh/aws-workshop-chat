@@ -9,10 +9,12 @@ export function avatarColor(id: string): string {
 // The operator's session carries the literal participantId "operator" (see mintSessionCookie
 // call sites) — without this, their own messages render as "참가자 ...ator" (the last 4 chars
 // of the string "operator"), which reads as a broken/anonymous reply instead of the operator's.
-export function displayName(participantId: string): string {
-  return participantId === "operator" ? "운영자" : `참가자 ...${participantId.slice(-4)}`;
+export function displayName(participantId: string, locale: "ko" | "en" = "ko"): string {
+  if (participantId === "operator") return locale === "en" ? "Operator" : "운영자";
+  return locale === "en" ? `Participant ...${participantId.slice(-4)}` : `참가자 ...${participantId.slice(-4)}`;
 }
 
-export function avatarInitials(participantId: string): string {
-  return participantId === "operator" ? "운영" : participantId.slice(-2);
+export function avatarInitials(participantId: string, locale: "ko" | "en" = "ko"): string {
+  if (participantId === "operator") return locale === "en" ? "OP" : "운영";
+  return participantId.slice(-2);
 }

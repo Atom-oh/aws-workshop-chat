@@ -1,9 +1,43 @@
+/* Theme tokens — default (dark) + a light "projector" override for presenting on a shared
+   screen where the dark theme washes out. `theme.ts`'s COLORS map reads through these so every
+   existing `style={{ color: COLORS.dim }}` call site repaints on toggle with zero call-site
+   changes. Toggled via `document.body.dataset.theme` (see Operator.tsx's `toggleTheme`). */
+:root {
+  --c-w: 255,255,255;
+  --c-bg: #161E2D; --c-bg-2: #0F1B2D; --c-bg-3: #232F3E;
+  --c-fg: rgba(255,255,255,.95); --c-fg-2: rgba(255,255,255,.78); --c-fg-3: rgba(255,255,255,.5); --c-fg-4: rgba(255,255,255,.34);
+  --c-fill: rgba(255,255,255,.05); --c-track: rgba(255,255,255,.18); --c-line-strong: rgba(255,255,255,.14); --c-avatar-bg: rgba(255,255,255,.1);
+  --c-accent: #FF9900; --c-accent-h: #EC7211; --c-accent-text: #FFB84D; --c-accent-rgb: 255,153,0; --c-on-accent: #0F1B2D;
+  --c-ok: #4FD1BC; --c-ok-solid: #01A88D; --c-ok-rgb: 1,168,141;
+  --c-danger: #DD344C; --c-danger-text: #FF9EA9; --c-danger-rgb: 221,52,76;
+  --c-focus: #0972d3; --c-shadow: 0 4px 20px rgba(0,7,22,.5);
+}
+body[data-theme="projector"] {
+  --c-w: 16,25,38;
+  --c-bg: #ffffff; --c-bg-2: #F2F3F3; --c-bg-3: #ffffff;
+  --c-fg: #12181F; --c-fg-2: #3B444F; --c-fg-3: #55606C; --c-fg-4: #68717D;
+  --c-fill: #F2F3F3; --c-track: #8D99A8; --c-line-strong: #8D99A8; --c-avatar-bg: #E4E7EA;
+  --c-accent: #B34700; --c-accent-h: #8F3800; --c-accent-text: #8A3300; --c-accent-rgb: 179,71,0; --c-on-accent: #ffffff;
+  --c-ok: #046B4C; --c-ok-solid: #046B4C; --c-ok-rgb: 4,107,76;
+  --c-danger: #A81E00; --c-danger-text: #8A1900; --c-danger-rgb: 168,30,0;
+  --c-focus: #0972d3; --c-shadow: 0 2px 12px rgba(0,7,22,.18);
+}
+@keyframes pulseDot { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+
+/* Hover/focus utilities for elements styled inline — kept as classNames since these are pure
+   presentational states, not worth threading useState/onMouseEnter through every button. */
+.hover-row:hover { background: rgba(var(--c-w), .035); }
+.hover-fill:hover { background: rgba(var(--c-w), .07); }
+.hover-accent-border:hover { border-color: var(--c-accent) !important; }
+.hover-danger:hover { border-color: var(--c-danger) !important; color: var(--c-danger) !important; }
+.focus-ring:focus { outline: none; border-color: var(--c-focus) !important; }
+
 * { box-sizing: border-box; }
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  background: #161e2d; /* matches the app's dark theme root, avoids a light flash before mount */
-  color: #fff;
+  background: var(--c-bg); /* matches the app's dark theme root, avoids a light flash before mount */
+  color: var(--c-fg);
 }
 button {
   cursor: pointer;
@@ -86,16 +120,16 @@ th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #eee; }
 .md ul, .md ol { margin: 4px 0 8px; padding-left: 22px; }
 .md li { margin: 2px 0; }
 .md strong { font-weight: 700; }
-.md a { color: #ff9900; text-decoration: underline; }
+.md a { color: var(--c-accent); text-decoration: underline; }
 .md blockquote {
-  margin: 6px 0; padding: 4px 12px; border-left: 3px solid rgba(255,255,255,.2);
-  color: rgba(255,255,255,.7);
+  margin: 6px 0; padding: 4px 12px; border-left: 3px solid var(--c-line-strong);
+  color: var(--c-fg-2);
 }
-.md hr { border: none; border-top: 1px solid rgba(255,255,255,.14); margin: 10px 0; }
+.md hr { border: none; border-top: 1px solid var(--c-line-strong); margin: 10px 0; }
 .md .table-scroll { overflow-x: auto; margin: 6px 0; }
 .md table { border-collapse: collapse; font-size: 0.92em; }
-.md th, .md td { border: 1px solid rgba(255,255,255,.14); padding: 5px 10px; text-align: left; }
-.md th { background: rgba(255,255,255,.06); font-weight: 700; }
+.md th, .md td { border: 1px solid var(--c-line-strong); padding: 5px 10px; text-align: left; }
+.md th { background: var(--c-fill); font-weight: 700; }
 
 /* Slack-style composer: borderless textarea inside a bordered box, autogrow, hint + send button below */
 .composer-wrap { border: 1px solid #d0d5dd; border-radius: 8px; padding: 8px; margin-top: 12px; }

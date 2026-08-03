@@ -8,6 +8,8 @@ import Attachment from "./Attachment";
 import Resizer from "./Resizer";
 import { useResizableWidth } from "./useResizableWidth";
 import { formatBytes } from "./media";
+import { readParams, setParams } from "./urlState";
+import { useLocale, LocaleToggle } from "./i18n";
 
 const ANNOUNCEMENTS_SLUG = "announcements";
 
@@ -23,8 +25,8 @@ async function uploadFile(file: File): Promise<PendingAttachment> {
   return { key, name: file.name, sizeBytes: file.size };
 }
 
-function timeLabel(iso: string) {
-  return new Date(iso).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+function timeLabel(iso: string, locale: "ko" | "en" = "ko") {
+  return new Date(iso).toLocaleTimeString(locale === "en" ? "en-US" : "ko-KR", { hour: "2-digit", minute: "2-digit" });
 }
 
 interface AiEntry {
@@ -56,22 +58,23 @@ function NavItem({ icon, iconColor, label, count, active, onClick }: any) {
 }
 
 function MessageRow({ m, children }: { m: Message; children?: React.ReactNode }) {
+  const { locale, t } = useLocale();
   return (
     <div style={{ display: "flex", gap: 11, padding: "10px 20px", position: "relative" }} className="msg-row-dark">
       <div style={{ width: 32, height: 32, flex: "none", borderRadius: 8, background: avatarColor(m.participantId), display: "flex", alignItems: "center", justifyContent: "center", font: "700 11px/1 inherit" }}>
-        {avatarInitials(m.participantId)}
+        {avatarInitials(m.participantId, locale)}
       </div>
       <div style={{ minWidth: 0, flex: 1 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 13.5, fontWeight: 700 }}>{displayName(m.participantId)}</span>
-          <span style={{ fontSize: 11, color: "rgba(255,255,255,.3)", fontFamily: "ui-monospace,Menlo,monospace" }}>{timeLabel(m.createdAt)}</span>
+          <span style={{ fontSize: 13.5, fontWeight: 700 }}>{displayName(m.participantId, locale)}</span>
+          <span style={{ fontSize: 11, color: "rgba(255,255,255,.3)", fontFamily: "ui-monospace,Menlo,monospace" }}>{timeLabel(m.createdAt, locale)}</span>
           {m.kind === "question" && (
             <span style={{
               display: "inline-flex", alignItems: "center", gap: 5, height: 18, padding: "0 7px", borderRadius: 6,
               background: m.status === "resolved" ? "rgba(1,168,141,.16)" : "rgba(255,153,0,.16)",
               color: m.status === "resolved" ? COLORS.tealText : "#FFB84D", font: "700 10.5px/1 inherit",
             }}>
-              {m.status === "resolved" ? "✓ 해결" : "미해결"} · 👍{m.upvotes}
+              {m.status === "resolved" ? `✓ ${t("해결")}` : t("미해결")} · 👍{m.upvotes}
             </span>
           )}
         </div>
@@ -86,6 +89,7 @@ function MessageRow({ m, children }: { m: Message; children?: React.ReactNode })
 function ThreadPanel({ slug, message, onClose, width, onResize }: {
   slug: string; message: Message; onClose: () => void; width: number; onResize: (deltaX: number) => void;
 }) {
+  const { locale, t } = useLocale();
   const rootUlid = message.sk.replace("MSG#", "");
   const [replies, setReplies] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
@@ -109,7 +113,7 @@ function ThreadPanel({ slug, message, onClose, width, onResize }: {
       <Resizer onResize={(dx) => onResize(-dx)} />
       <div style={{ width, flex: "none", background: COLORS.bgDark, borderLeft: `1px solid ${COLORS.border}`, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <div style={{ flex: "none", display: "flex", alignItems: "center", gap: 10, padding: "0 14px 0 18px", height: 52, borderBottom: `1px solid ${COLORS.border}` }}>
-        <div style={{ flex: 1, minWidth: 0, fontSize: 14.5, fontWeight: 700 }}>스레드</div>
+        <div style={{ flex: 1, minWidth: 0, fontSize: 14.5, fontWeight: 700 }}>{t("스레드")}</div>
         <button onClick={onClose} style={{ width: 28, height: 28, border: 0, borderRadius: 8, background: "rgba(255,255,255,.07)", color: "rgba(255,255,255,.6)", cursor: "pointer" }}>×</button>
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: "16px 18px" }}>
@@ -118,19 +122,19 @@ function ThreadPanel({ slug, message, onClose, width, onResize }: {
           {replies.map((r) => (
             <div key={r.sk} style={{ display: "flex", gap: 10 }}>
               <div style={{ width: 28, height: 28, flex: "none", borderRadius: 7, background: avatarColor(r.participantId), display: "flex", alignItems: "center", justifyContent: "center", font: "700 10px/1 inherit" }}>
-                {avatarInitials(r.participantId)}
+                {avatarInitials(r.participantId, locale)}
               </div>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
-                  <span style={{ fontSize: 12.5, fontWeight: 500 }}>{displayName(r.participantId)}</span>
-                  <span style={{ fontSize: 11, color: "rgba(255,255,255,.3)", fontFamily: "ui-monospace,Menlo,monospace" }}>{timeLabel(r.createdAt)}</span>
+                  <span style={{ fontSize: 12.5, fontWeight: 500 }}>{displayName(r.participantId, locale)}</span>
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,.3)", fontFamily: "ui-monospace,Menlo,monospace" }}>{timeLabel(r.createdAt, locale)}</span>
                 </div>
                 <div style={{ fontSize: 13.5, lineHeight: 1.6, color: "rgba(255,255,255,.85)" }}><Markdown text={r.body} /></div>
                 {r.media?.map((key) => <Attachment key={key} mediaKey={key} />)}
               </div>
             </div>
           ))}
-          {replies.length === 0 && <div style={{ fontSize: 13, color: COLORS.dim }}>아직 답변이 없습니다.</div>}
+          {replies.length === 0 && <div style={{ fontSize: 13, color: COLORS.dim }}>{t("아직 답변이 없습니다.")}</div>}
         </div>
       </div>
       <div style={{ flex: "none", padding: "12px 18px 16px" }}>
@@ -138,7 +142,7 @@ function ThreadPanel({ slug, message, onClose, width, onResize }: {
           value={draft}
           onChange={setDraft}
           onSend={send}
-          placeholder="답글 작성"
+          placeholder={t("답글 작성")}
           onAttachFiles={(files) => Promise.all(Array.from(files).map(uploadFile)).then((added) => setAttachments((a) => [...a, ...added]))}
           extra={attachments.length > 0 && <AttachmentChips attachments={attachments} onRemove={(key) => setAttachments((a) => a.filter((x) => x.key !== key))} />}
         />
@@ -166,11 +170,12 @@ function AiView({ history, aiQuery, setAiQuery, aiBusy, ask, onFeedback }: {
   history: AiEntry[]; aiQuery: string; setAiQuery: (v: string) => void; aiBusy: boolean;
   ask: () => void; onFeedback: (i: number, fb: "up" | "down") => void;
 }) {
+  const { t } = useLocale();
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
       <div style={{ flex: "none", padding: "16px 20px 12px", borderBottom: `1px solid ${COLORS.border}` }}>
-        <div style={{ fontSize: 17, fontWeight: 700 }}>AI 도우미</div>
-        <div style={{ fontSize: 12.5, color: COLORS.dim }}>답변은 본인에게만 표시됩니다 · 랩 가이드에 대해 질문하세요</div>
+        <div style={{ fontSize: 17, fontWeight: 700 }}>{t("AI 도우미")}</div>
+        <div style={{ fontSize: 12.5, color: COLORS.dim }}>{t("답변은 본인에게만 표시됩니다 · 랩 가이드에 대해 질문하세요")}</div>
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
         {history.map((h, i) => (
@@ -186,7 +191,7 @@ function AiView({ history, aiQuery, setAiQuery, aiBusy, ask, onFeedback }: {
               </div>
               {!h.streaming && h.refDocs.length > 0 && (
                 <div style={{ marginTop: 9, fontSize: 11.5, color: "rgba(255,255,255,.4)", fontFamily: "ui-monospace,Menlo,monospace" }}>
-                  참고: {h.refDocs.join(", ")}
+                  {t("참고")}: {h.refDocs.join(", ")}
                 </div>
               )}
               {!h.streaming && h.aiUlid && (
@@ -195,39 +200,41 @@ function AiView({ history, aiQuery, setAiQuery, aiBusy, ask, onFeedback }: {
                     onClick={() => onFeedback(i, "up")}
                     style={{ border: "1px solid rgba(255,255,255,.14)", background: h.feedback === "up" ? "rgba(1,168,141,.18)" : "transparent", color: h.feedback === "up" ? COLORS.tealText : "rgba(255,255,255,.6)", borderRadius: 999, height: 26, padding: "0 10px", cursor: "pointer", fontSize: 12 }}
                   >
-                    👍 도움됨
+                    👍 {t("도움됨")}
                   </button>
                   <button
                     onClick={() => onFeedback(i, "down")}
                     style={{ border: "1px solid rgba(255,255,255,.14)", background: h.feedback === "down" ? "rgba(221,52,76,.18)" : "transparent", color: h.feedback === "down" ? COLORS.redText : "rgba(255,255,255,.6)", borderRadius: 999, height: 26, padding: "0 10px", cursor: "pointer", fontSize: 12 }}
                   >
-                    👎 가이드에 없음
+                    👎 {t("가이드에 없음")}
                   </button>
                 </div>
               )}
             </div>
           </div>
         ))}
-        {history.length === 0 && <div style={{ color: COLORS.dim, fontSize: 13 }}>아직 질문한 내용이 없습니다.</div>}
+        {history.length === 0 && <div style={{ color: COLORS.dim, fontSize: 13 }}>{t("아직 질문한 내용이 없습니다.")}</div>}
       </div>
       <div style={{ flex: "none", padding: "12px 20px 16px" }}>
-        <Composer value={aiQuery} onChange={setAiQuery} onSend={ask} placeholder="랩 가이드에 대해 질문하기" />
-        {aiBusy && <div style={{ fontSize: 12, color: COLORS.dim, marginTop: 6 }}>답변 생성 중…</div>}
+        <Composer value={aiQuery} onChange={setAiQuery} onSend={ask} placeholder={t("랩 가이드에 대해 질문하기")} />
+        {aiBusy && <div style={{ fontSize: 12, color: COLORS.dim, marginTop: 6 }}>{t("답변 생성 중…")}</div>}
       </div>
     </div>
   );
 }
 
 export default function Chat({ session, onLogout }: { session: Session; onLogout: () => void }) {
+  const { locale, t } = useLocale();
+  const initialParams = useMemo(readParams, []);
   const [channels, setChannels] = useState<Channel[]>([]);
-  const [view, setView] = useState<"channel" | "ai">("channel");
-  const [active, setActive] = useState<string>("");
+  const [view, setView] = useState<"channel" | "ai">(initialParams.get("view") === "ai" ? "ai" : "channel");
+  const [active, setActive] = useState<string>(initialParams.get("channel") ?? "");
   const [labStep, setLabStep] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [asQuestion, setAsQuestion] = useState(false);
-  const [selectedUlid, setSelectedUlid] = useState<string | null>(null);
+  const [selectedUlid, setSelectedUlid] = useState<string | null>(initialParams.get("thread"));
   const [aiQuery, setAiQuery] = useState("");
   const [aiHistory, setAiHistory] = useState<AiEntry[]>([]);
   const [aiBusy, setAiBusy] = useState(false);
@@ -245,6 +252,16 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
       if (visible.length && !active) setActive(visible[0].pk.replace("CHANNEL#", ""));
     });
   }, []);
+
+  // Keeps the address bar refresh-safe and shareable (e.g. a link straight into #announcements)
+  // without a router dependency — see urlState.ts.
+  useEffect(() => {
+    setParams({
+      view: view === "ai" ? "ai" : undefined,
+      channel: view === "channel" ? active || undefined : undefined,
+      thread: view === "channel" ? selectedUlid ?? undefined : undefined,
+    });
+  }, [view, active, selectedUlid]);
 
   // Single Fargate task (§ws-hub) means a deploy or idle timeout drops every open socket at
   // once — reconnect has to be automatic, and on reconnect the client backfills only what it
@@ -398,7 +415,7 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
         }
       }
     } catch (err: any) {
-      setAiHistory((h) => h.map((e, i) => (i === index ? { ...e, answer: `오류: ${err.message}`, streaming: false, error: true } : e)));
+      setAiHistory((h) => h.map((e, i) => (i === index ? { ...e, answer: `${t("오류")}: ${err.message}`, streaming: false, error: true } : e)));
     } finally {
       setAiBusy(false);
     }
@@ -423,20 +440,21 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
           <div style={{ fontWeight: 700, fontSize: 13 }}>Workshop Chat</div>
         </div>
         {labStep && (
-          <span style={{ fontSize: 11.5, color: COLORS.dim, fontFamily: "ui-monospace,Menlo,monospace" }}>현재 랩 스텝: {labStep}</span>
+          <span style={{ fontSize: 11.5, color: COLORS.dim, fontFamily: "ui-monospace,Menlo,monospace" }}>{t("현재 랩 스텝")}: {labStep}</span>
         )}
         <div style={{ flex: 1 }} />
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <LocaleToggle />
           <span style={{ fontSize: 13, color: COLORS.dim }}>
-            {displayName(session.role === "operator" ? "operator" : session.participantId)}
+            {displayName(session.role === "operator" ? "operator" : session.participantId, locale)}
           </span>
-          <button onClick={onLogout} style={{ height: 30, padding: "0 12px", border: "1px solid rgba(255,255,255,.2)", borderRadius: 999, background: "transparent", color: "#fff", cursor: "pointer" }}>로그아웃</button>
+          <button onClick={onLogout} style={{ height: 30, padding: "0 12px", border: "1px solid rgba(255,255,255,.2)", borderRadius: 999, background: "transparent", color: "#fff", cursor: "pointer" }}>{t("로그아웃")}</button>
         </div>
       </div>
 
       <div style={{ flex: 1, display: "flex", minHeight: 0, overflowX: "auto" }}>
         <div style={{ width: sidebarWidth, flex: "none", background: COLORS.bgDark, borderRight: `1px solid ${COLORS.border}`, display: "flex", flexDirection: "column", overflowY: "auto" }}>
-          <div style={{ padding: "14px 12px 4px", fontSize: 11, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "rgba(255,255,255,.35)" }}>채널</div>
+          <div style={{ padding: "14px 12px 4px", fontSize: 11, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "rgba(255,255,255,.35)" }}>{t("채널")}</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 1, padding: "0 8px 16px" }}>
             {channels.map((c) => {
               const slug = c.pk.replace("CHANNEL#", "");
@@ -446,9 +464,9 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
               );
             })}
           </div>
-          <div style={{ padding: "0 12px 4px", fontSize: 11, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "rgba(255,255,255,.35)" }}>도우미</div>
+          <div style={{ padding: "0 12px 4px", fontSize: 11, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "rgba(255,255,255,.35)" }}>{t("도우미")}</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 1, padding: "0 8px" }}>
-            <NavItem icon="✳" iconColor={COLORS.teal} label="AI 도우미" active={view === "ai"} onClick={() => setView("ai")} />
+            <NavItem icon="✳" iconColor={COLORS.teal} label={t("AI 도우미")} active={view === "ai"} onClick={() => setView("ai")} />
           </div>
         </div>
         <Resizer onResize={resizeSidebar} />
@@ -468,19 +486,19 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
                       <MessageRow m={m}>
                         <div style={{ display: "flex", gap: 12, marginTop: 6 }}>
                           <button onClick={(e) => { e.stopPropagation(); setSelectedUlid(ulid); }} style={{ border: "none", background: "transparent", color: COLORS.orange, fontSize: 12.5, cursor: "pointer", padding: 0 }}>
-                            {m.replyCount ? `💬 ${m.replyCount}개의 댓글` : "스레드"}
+                            {m.replyCount ? `💬 ${m.replyCount} ${locale === "en" ? (m.replyCount === 1 ? "reply" : "replies") : "개의 댓글"}` : t("스레드")}
                           </button>
                           {m.kind === "question" && (
-                            <button onClick={(e) => { e.stopPropagation(); toggleUpvote(ulid); }} style={{ border: "none", background: "transparent", color: m.upvoterIds?.includes(session.participantId) ? COLORS.orange : "rgba(255,255,255,.6)", fontSize: 12.5, cursor: "pointer", padding: 0 }}>👍 업보트</button>
+                            <button onClick={(e) => { e.stopPropagation(); toggleUpvote(ulid); }} style={{ border: "none", background: "transparent", color: m.upvoterIds?.includes(session.participantId) ? COLORS.orange : "rgba(255,255,255,.6)", fontSize: 12.5, cursor: "pointer", padding: 0 }}>👍 {t("업보트")}</button>
                           )}
                           {m.kind === "question" && session.role === "operator" && m.status !== "resolved" && (
-                            <button onClick={(e) => { e.stopPropagation(); api.resolve(active, ulid); }} style={{ border: "none", background: "transparent", color: "#FFB84D", fontSize: 12.5, cursor: "pointer", padding: 0 }}>해결로 표시</button>
+                            <button onClick={(e) => { e.stopPropagation(); api.resolve(active, ulid); }} style={{ border: "none", background: "transparent", color: "#FFB84D", fontSize: 12.5, cursor: "pointer", padding: 0 }}>{t("해결로 표시")}</button>
                           )}
                           {session.role === "operator" && active !== ANNOUNCEMENTS_SLUG && (
-                            <button onClick={(e) => { e.stopPropagation(); postAsAnnouncement(m); }} style={{ border: "none", background: "transparent", color: "rgba(255,255,255,.6)", fontSize: 12.5, cursor: "pointer", padding: 0 }}>📌 공지로 올리기</button>
+                            <button onClick={(e) => { e.stopPropagation(); postAsAnnouncement(m); }} style={{ border: "none", background: "transparent", color: "rgba(255,255,255,.6)", fontSize: 12.5, cursor: "pointer", padding: 0 }}>{t("📌 공지로 올리기")}</button>
                           )}
                           {session.role === "operator" && (
-                            <button onClick={(e) => { e.stopPropagation(); api.deleteMessage(active, ulid); }} style={{ border: "none", background: "transparent", color: "rgba(255,255,255,.4)", fontSize: 12.5, cursor: "pointer", padding: 0 }}>삭제</button>
+                            <button onClick={(e) => { e.stopPropagation(); api.deleteMessage(active, ulid); }} style={{ border: "none", background: "transparent", color: "rgba(255,255,255,.4)", fontSize: 12.5, cursor: "pointer", padding: 0 }}>{t("삭제")}</button>
                           )}
                         </div>
                       </MessageRow>
@@ -492,7 +510,7 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
                 {active === "questions" && (
                   <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: COLORS.dim, marginBottom: 8 }}>
                     <input type="checkbox" checked={asQuestion} onChange={(e) => setAsQuestion(e.target.checked)} style={{ width: "auto" }} />
-                    질문으로 등록
+                    {t("질문으로 등록")}
                   </label>
                 )}
                 <Composer
@@ -501,7 +519,7 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
                   onSend={send}
                   onPaste={onPaste}
                   onAttachFiles={attachFiles}
-                  placeholder="메시지 입력 (붙여넣기 또는 📎로 파일 첨부)"
+                  placeholder={t("메시지 입력 (붙여넣기 또는 📎로 파일 첨부)")}
                   extra={attachments.length > 0 && <AttachmentChips attachments={attachments} onRemove={(key) => setAttachments((a) => a.filter((x) => x.key !== key))} />}
                 />
               </div>

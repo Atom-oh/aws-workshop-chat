@@ -16,3 +16,6 @@ image.png
 image copy.png
 Screenshot *.png
 *-drag.png
+
+# content-review-agent's own memory files, not app content
+.claude/agent-memory/

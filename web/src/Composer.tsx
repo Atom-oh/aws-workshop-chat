@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useLocale } from "./i18n";
 
 // Enter sends, Shift+Enter inserts a newline — except while an IME composition is still in
 // progress (Korean/Japanese/Chinese input): the Enter that confirms the current syllable block
@@ -21,6 +22,7 @@ export default function Composer({
   placeholder: string;
   extra?: React.ReactNode;
 }) {
+  const { t } = useLocale();
   const ref = useRef<HTMLTextAreaElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
@@ -55,7 +57,7 @@ export default function Composer({
         }}
       />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
-        <span style={{ fontSize: 11.5, color: "rgba(255,255,255,.45)" }}>Enter로 보내기 · Shift+Enter로 줄바꿈 · `code` · ```코드블록```</span>
+        <span style={{ fontSize: 11.5, color: "rgba(255,255,255,.45)" }}>{t("Enter로 보내기 · Shift+Enter로 줄바꿈 · `code` · ```코드블록```")}</span>
         <div style={{ display: "flex", gap: 8 }}>
           {onAttachFiles && (
             <>
@@ -71,7 +73,7 @@ export default function Composer({
               />
               <button
                 onClick={() => fileRef.current?.click()}
-                title="파일 첨부"
+                title={t("파일 첨부")}
                 style={{ height: 30, width: 30, border: "1px solid rgba(255,255,255,.14)", borderRadius: 999, background: "transparent", color: "rgba(255,255,255,.7)", cursor: "pointer", fontSize: 14 }}
               >
                 📎
@@ -82,7 +84,7 @@ export default function Composer({
             onClick={onSend}
             style={{ height: 30, padding: "0 14px", border: 0, borderRadius: 999, background: "#FF9900", color: "#0F1B2D", font: "700 12.5px/1 inherit", cursor: "pointer" }}
           >
-            보내기
+            {t("보내기")}
           </button>
         </div>
       </div>

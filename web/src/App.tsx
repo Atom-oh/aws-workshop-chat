@@ -3,9 +3,11 @@ import { api, type Session } from "./api";
 import Login from "./Login";
 import Chat from "./Chat";
 import Operator from "./Operator";
+import { LocaleProvider, useLocale } from "./i18n";
 
-export default function App() {
+function AppInner() {
   const [session, setSession] = useState<Session | null | "loading">("loading");
+  const { t } = useLocale();
 
   async function refreshSession() {
     setSession((await api.session()).session);
@@ -22,7 +24,7 @@ export default function App() {
   if (onOperatorRoute && session.role !== "operator") {
     return (
       <div className="container">
-        <p>운영자만 접근할 수 있습니다.</p>
+        <p>{t("운영자만 접근할 수 있습니다.")}</p>
       </div>
     );
   }
@@ -33,4 +35,12 @@ export default function App() {
   }
 
   return onOperatorRoute ? <Operator onLogout={onLogout} /> : <Chat session={session} onLogout={onLogout} />;
+}
+
+export default function App() {
+  return (
+    <LocaleProvider>
+      <AppInner />
+    </LocaleProvider>
+  );
 }

@@ -26,8 +26,8 @@ region:
         - {id: bedrock, icon: bedrock, label: "Bedrock"}
     - name: "Provisioning"
       services:
-        - {id: credfn, icon: lambda, label: "credentials-provisioner"}
         - {id: seed, icon: secrets, label: "Secrets Manager"}
+        - {id: credfn, icon: lambda, label: "credentials-provisioner"}
         - {id: metric, icon: cloudwatch, label: "CloudWatch"}
 flows:
   - {from: participants, to: cf, label: "HTTPS"}
