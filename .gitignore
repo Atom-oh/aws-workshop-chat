@@ -19,3 +19,6 @@ Screenshot *.png
 
 # content-review-agent's own memory files, not app content
 .claude/agent-memory/
+
+# exported container image, not source
+*.tar.gz

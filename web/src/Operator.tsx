@@ -7,7 +7,7 @@ import Composer from "./Composer";
 import Resizer from "./Resizer";
 import Attachment from "./Attachment";
 import { useResizableWidth } from "./useResizableWidth";
-import { readParams, setParams } from "./urlState";
+import { readParams, setParams, buildMessageLink, useHighlight } from "./urlState";
 import { useLocale, LocaleToggle } from "./i18n";
 
 // Rough per-guide-doc-set char budget the AI prompt-injection fallback caps at (see
@@ -74,11 +74,12 @@ function Chip({ label, count, active, onClick }: any) {
 // ---------- Questions board ----------
 
 function QuestionsView({
-  questions, filter, setFilter, selectedId, setSelectedId, onUpvote, onResolve, onDelete,
+  questions, filter, setFilter, selectedId, setSelectedId, onUpvote, onResolve, onDelete, highlighted, onCopyLink,
 }: {
   questions: Message[]; filter: "open" | "all" | "top"; setFilter: (f: any) => void;
   selectedId: string | null; setSelectedId: (id: string | null) => void;
   onUpvote: (m: Message) => void; onResolve: (m: Message) => void; onDelete: (m: Message) => void;
+  highlighted: string | null; onCopyLink: (ulid: string) => void;
 }) {
   const { locale, t } = useLocale();
   const [search, setSearch] = useState("");
@@ -133,6 +134,8 @@ function QuestionsView({
           return (
             <div
               key={q.sk}
+              data-msg-anchor={ulid}
+              className={highlighted === ulid ? "msg-flash" : undefined}
               style={{ borderBottom: "1px solid rgba(var(--c-w),.055)", background: selectedId === ulid ? "rgba(var(--c-accent-rgb),.055)" : "transparent" }}
             >
               <div
@@ -188,6 +191,14 @@ function QuestionsView({
                     </button>
                   )}
                   <button
+                    onClick={(e) => { e.stopPropagation(); onCopyLink(ulid); }}
+                    title={t("링크 복사")}
+                    className="hover-accent-border"
+                    style={{ width: 28, height: 28, border: `1px solid ${COLORS.lineStrong}`, borderRadius: 999, background: "transparent", color: COLORS.fg3, font: "400 13px/1 inherit", cursor: "pointer" }}
+                  >
+                    🔗
+                  </button>
+                  <button
                     onClick={(e) => { e.stopPropagation(); onDelete(q); }}
                     title={t("메시지 삭제")}
                     className="hover-danger"
@@ -208,8 +219,9 @@ function QuestionsView({
 
 // ---------- Thread panel ----------
 
-function ThreadPanel({ channel, ulid, message, onClose, width, onResize }: {
+function ThreadPanel({ channel, ulid, message, onClose, width, onResize, initialMsgUlid, onCopyLink }: {
   channel: string; ulid: string; message: Message; onClose: () => void; width: number; onResize: (deltaX: number) => void;
+  initialMsgUlid?: string | null; onCopyLink: (ulid: string) => void;
 }) {
   const { locale, t } = useLocale();
   const [replies, setReplies] = useState<Message[]>([]);
@@ -219,6 +231,8 @@ function ThreadPanel({ channel, ulid, message, onClose, width, onResize }: {
     setReplies((await api.threadReplies(ulid)).replies);
   }
   useEffect(() => { load(); }, [ulid]);
+
+  const highlighted = useHighlight([message, ...replies], initialMsgUlid);
 
   async function send() {
     if (!draft.trim()) return;
@@ -239,28 +253,33 @@ function ThreadPanel({ channel, ulid, message, onClose, width, onResize }: {
         <button onClick={onClose} className="hover-fill" style={{ width: 28, height: 28, border: 0, borderRadius: 8, background: COLORS.fill, color: COLORS.fg2, cursor: "pointer" }}>×</button>
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: "16px 18px" }}>
-        <div style={{ fontSize: 14.5, lineHeight: 1.6, color: COLORS.text, marginBottom: 12 }}>
+        <div data-msg-anchor={ulid} className={highlighted === ulid ? "msg-flash" : undefined} style={{ borderRadius: 8, padding: 4, margin: -4, marginBottom: 8 }}>
           <Markdown text={message.body} />
           {message.media.map((key) => <Attachment key={key} mediaKey={key} />)}
+          <button onClick={() => onCopyLink(ulid)} style={{ marginTop: 6, border: "none", background: "transparent", color: COLORS.fg4, fontSize: 11.5, cursor: "pointer", padding: 0 }}>🔗 {t("링크 복사")}</button>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 14, borderTop: `1px solid ${COLORS.border}`, paddingTop: 14 }}>
-          {replies.map((r) => (
-            <div key={r.sk} style={{ display: "flex", gap: 10 }}>
-              <div style={{ width: 28, height: 28, flex: "none", borderRadius: 7, background: avatarColor(r.participantId), display: "flex", alignItems: "center", justifyContent: "center", font: "700 10px/1 inherit" }}>
-                {avatarInitials(r.participantId, locale)}
-              </div>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
-                  <span style={{ fontSize: 12.5, fontWeight: 500 }}>{displayName(r.participantId, locale)}</span>
-                  <span style={{ fontSize: 11, color: COLORS.fg4, fontFamily: "ui-monospace,Menlo,monospace" }}>{timeLabel(r.createdAt, locale)}</span>
+          {replies.map((r) => {
+            const rUlid = r.sk.replace("MSG#", "");
+            return (
+              <div key={r.sk} data-msg-anchor={rUlid} className={highlighted === rUlid ? "msg-flash" : undefined} style={{ display: "flex", gap: 10, borderRadius: 8, padding: 4, margin: -4 }}>
+                <div style={{ width: 28, height: 28, flex: "none", borderRadius: 7, background: avatarColor(r.participantId), display: "flex", alignItems: "center", justifyContent: "center", font: "700 10px/1 inherit" }}>
+                  {avatarInitials(r.participantId, locale)}
                 </div>
-                <div style={{ fontSize: 13.5, lineHeight: 1.6, color: COLORS.fg2 }}>
-                  <Markdown text={r.body} />
-                  {r.media.map((key) => <Attachment key={key} mediaKey={key} />)}
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+                    <span style={{ fontSize: 12.5, fontWeight: 500 }}>{displayName(r.participantId, locale)}</span>
+                    <span style={{ fontSize: 11, color: COLORS.fg4, fontFamily: "ui-monospace,Menlo,monospace" }}>{timeLabel(r.createdAt, locale)}</span>
+                  </div>
+                  <div style={{ fontSize: 13.5, lineHeight: 1.6, color: COLORS.fg2 }}>
+                    <Markdown text={r.body} />
+                    {r.media.map((key) => <Attachment key={key} mediaKey={key} />)}
+                  </div>
+                  <button onClick={() => onCopyLink(rUlid)} style={{ marginTop: 4, border: "none", background: "transparent", color: COLORS.fg4, fontSize: 11, cursor: "pointer", padding: 0 }}>🔗 {t("링크 복사")}</button>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
           {replies.length === 0 && <div style={{ fontSize: 13, color: COLORS.dim }}>{t("아직 답변이 없습니다.")}</div>}
         </div>
       </div>
@@ -274,14 +293,30 @@ function ThreadPanel({ channel, ulid, message, onClose, width, onResize }: {
 
 // ---------- Channel view ----------
 
-function ChannelView({ slug, name, archived, onOpenThread }: { slug: string; name: string; archived: boolean; onOpenThread: (m: Message) => void }) {
+function ChannelView({ slug, name, archived, onOpenThread, initialThreadUlid, initialMsgUlid, onCopyLink }: {
+  slug: string; name: string; archived: boolean; onOpenThread: (m: Message) => void;
+  initialThreadUlid?: string | null; initialMsgUlid?: string | null; onCopyLink: (ulid: string) => void;
+}) {
   const { locale, t } = useLocale();
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
   const wsRef = useRef<WebSocket | null>(null);
+  const restoredThreadRef = useRef(false);
+  const highlighted = useHighlight(messages, initialMsgUlid);
 
   useEffect(() => {
-    api.messages(slug).then((r) => setMessages(r.messages));
+    api.messages(slug).then((r) => {
+      setMessages(r.messages);
+      // One-shot: opens the thread a deep link pointed at, once its root shows up in this
+      // channel's own message list (ChannelView owns that list; the parent only gets told about
+      // it via onOpenThread once a match is found).
+      if (restoredThreadRef.current || !initialThreadUlid) return;
+      const root = r.messages.find((m) => m.sk === `MSG#${initialThreadUlid}`);
+      if (root) {
+        restoredThreadRef.current = true;
+        onOpenThread(root);
+      }
+    });
     wsRef.current?.close();
     const ws = new WebSocket(wsUrl(slug));
     ws.onmessage = (evt) => {
@@ -310,32 +345,40 @@ function ChannelView({ slug, name, archived, onOpenThread }: { slug: string; nam
         )}
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px 8px", display: "flex", flexDirection: "column", gap: 2 }}>
-        {messages.filter((m) => !m.deleted).map((m) => (
-          <div key={m.sk} className="hover-row" style={{ display: "flex", gap: 11, padding: "7px 10px", margin: "0 -10px", borderRadius: 8 }}>
-            <div style={{ width: 32, height: 32, flex: "none", borderRadius: 8, background: avatarColor(m.participantId), display: "flex", alignItems: "center", justifyContent: "center", font: "700 11px/1 inherit" }}>
-              {avatarInitials(m.participantId, locale)}
-            </div>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
-                <span style={{ fontSize: 13.5, fontWeight: 700 }}>{displayName(m.participantId, locale)}</span>
-                <span style={{ fontSize: 11, color: COLORS.fg4, fontFamily: "ui-monospace,Menlo,monospace" }}>{timeLabel(m.createdAt, locale)}</span>
-                {m.kind === "question" && m.status === "open" && (
-                  <span style={{ height: 18, padding: "0 7px", borderRadius: 6, background: "rgba(var(--c-accent-rgb),.16)", color: COLORS.orangeText, font: "700 10.5px/18px inherit" }}>{t("미해결")}</span>
-                )}
+        {messages.filter((m) => !m.deleted).map((m) => {
+          const ulid = m.sk.replace("MSG#", "");
+          return (
+            <div key={m.sk} data-msg-anchor={ulid} className={`hover-row${highlighted === ulid ? " msg-flash" : ""}`} style={{ display: "flex", gap: 11, padding: "7px 10px", margin: "0 -10px", borderRadius: 8 }}>
+              <div style={{ width: 32, height: 32, flex: "none", borderRadius: 8, background: avatarColor(m.participantId), display: "flex", alignItems: "center", justifyContent: "center", font: "700 11px/1 inherit" }}>
+                {avatarInitials(m.participantId, locale)}
               </div>
-              <div style={{ fontSize: 14, lineHeight: 1.6, color: COLORS.text }}>
-                <Markdown text={m.body} />
-                {m.media.map((key) => <Attachment key={key} mediaKey={key} />)}
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+                  <span style={{ fontSize: 13.5, fontWeight: 700 }}>{displayName(m.participantId, locale)}</span>
+                  <span style={{ fontSize: 11, color: COLORS.fg4, fontFamily: "ui-monospace,Menlo,monospace" }}>{timeLabel(m.createdAt, locale)}</span>
+                  {m.kind === "question" && m.status === "open" && (
+                    <span style={{ height: 18, padding: "0 7px", borderRadius: 6, background: "rgba(var(--c-accent-rgb),.16)", color: COLORS.orangeText, font: "700 10.5px/18px inherit" }}>{t("미해결")}</span>
+                  )}
+                </div>
+                <div style={{ fontSize: 14, lineHeight: 1.6, color: COLORS.text }}>
+                  <Markdown text={m.body} />
+                  {m.media.map((key) => <Attachment key={key} mediaKey={key} />)}
+                </div>
+                <div style={{ display: "flex", gap: 12, marginTop: 4, flexWrap: "wrap" }}>
+                  <button
+                    onClick={() => onOpenThread(m)}
+                    style={{ border: "none", background: "transparent", color: COLORS.orange, fontSize: 12.5, cursor: "pointer", padding: 0, font: "inherit" }}
+                  >
+                    {m.replyCount ? `💬 ${m.replyCount} ${locale === "en" ? (m.replyCount === 1 ? "reply" : "replies") : "개의 댓글"}` : t("스레드")}
+                  </button>
+                  <button onClick={() => onCopyLink(ulid)} style={{ border: "none", background: "transparent", color: COLORS.fg4, fontSize: 12.5, cursor: "pointer", padding: 0, font: "inherit" }}>
+                    🔗 {t("링크 복사")}
+                  </button>
+                </div>
               </div>
-              <button
-                onClick={() => onOpenThread(m)}
-                style={{ border: "none", background: "transparent", color: COLORS.orange, fontSize: 12.5, cursor: "pointer", padding: "4px 0 0", font: "inherit" }}
-              >
-                {m.replyCount ? `💬 ${m.replyCount} ${locale === "en" ? (m.replyCount === 1 ? "reply" : "replies") : "개의 댓글"}` : t("스레드")}
-              </button>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
       <div style={{ flex: "none", padding: "12px 20px 16px" }}>
         {archived ? (
@@ -558,6 +601,8 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
   const initialParams = useMemo(readParams, []);
   const initialView = initialParams.get("view") as View | null;
   const VALID_VIEWS: View[] = ["questions", "channel", "ai", "docs", "attendance"];
+  const initialThreadUlid = initialParams.get("thread");
+  const initialMsgUlid = initialParams.get("msg");
 
   const [labStep, setLabStepState] = useState("");
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -566,7 +611,7 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
   const [channelThread, setChannelThread] = useState<Message | null>(null);
   const [questions, setQuestions] = useState<Message[]>([]);
   const [filter, setFilter] = useState<"open" | "all" | "top">("open");
-  const [selectedId, setSelectedId] = useState<string | null>(initialParams.get("thread"));
+  const [selectedId, setSelectedId] = useState<string | null>(initialThreadUlid);
   const [aiQueries, setAiQueries] = useState<AiQuery[]>([]);
   const [docs, setDocs] = useState<GuideDoc[]>([]);
   const [reindex, setReindex] = useState<{ status: string | null; startedAt?: string }>({ status: null });
@@ -586,16 +631,24 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
   }
 
   // Keeps the address bar refresh-safe and shareable (e.g. a link straight into the questions
-  // board or a specific channel) without a router dependency — see urlState.ts. A thread opened
-  // from inside a channel view isn't restorable from a URL (ChannelView owns its own message
-  // list, the ulid alone isn't enough to reopen it) so that case is left out of the query string.
+  // board, a channel, or an open thread within either) without a router dependency — see
+  // urlState.ts.
   useEffect(() => {
     setParams({
       view,
       channel: view === "channel" ? activeChannel || undefined : undefined,
-      thread: view === "questions" ? selectedId ?? undefined : undefined,
+      thread: view === "questions" ? selectedId ?? undefined : view === "channel" ? channelThread?.sk.replace("MSG#", "") : undefined,
     });
-  }, [view, activeChannel, selectedId]);
+  }, [view, activeChannel, selectedId, channelThread]);
+
+  async function copyLink(url: string) {
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast(t("링크를 복사했습니다"));
+    } catch {
+      showToast(url);
+    }
+  }
 
   async function loadQuestions(chans: Channel[]) {
     const perChannel = await Promise.all(chans.map((c) => api.messages(c.pk.replace("CHANNEL#", ""))));
@@ -630,6 +683,7 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
 
   const selected = useMemo(() => questions.find((q) => q.sk.replace("MSG#", "") === selectedId) ?? null, [questions, selectedId]);
   const openCount = questions.filter((q) => q.status === "open").length;
+  const questionsHighlighted = useHighlight(questions, view === "questions" ? initialMsgUlid : null);
 
   async function exportNow() {
     if (exporting) return;
@@ -785,10 +839,16 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
               onUpvote={(q) => api.upvote(q.channel, q.sk.replace("MSG#", "")).then(() => loadQuestions(channels))}
               onResolve={(q) => api.resolve(q.channel, q.sk.replace("MSG#", "")).then(() => { loadQuestions(channels); showToast(t("해결로 표시했습니다")); })}
               onDelete={(q) => api.deleteMessage(q.channel, q.sk.replace("MSG#", "")).then(() => { loadQuestions(channels); showToast(t("메시지를 삭제했습니다")); })}
+              highlighted={questionsHighlighted}
+              onCopyLink={(ulid) => copyLink(buildMessageLink({ view: "questions", thread: ulid }))}
             />
           )}
           {view === "channel" && activeChannel && (
-            <ChannelView slug={activeChannel} name={channelName(activeChannel)} archived={channelArchived(activeChannel)} onOpenThread={setChannelThread} />
+            <ChannelView
+              slug={activeChannel} name={channelName(activeChannel)} archived={channelArchived(activeChannel)} onOpenThread={setChannelThread}
+              initialThreadUlid={initialThreadUlid} initialMsgUlid={initialMsgUlid}
+              onCopyLink={(ulid) => copyLink(buildMessageLink({ view: "channel", channel: activeChannel, msg: ulid }))}
+            />
           )}
           {view === "ai" && <AiLogView queries={aiQueries} />}
           {view === "docs" && (
@@ -808,10 +868,18 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
         </div>
 
         {selected && view === "questions" && (
-          <ThreadPanel channel={selected.channel} ulid={selected.sk.replace("MSG#", "")} message={selected} onClose={() => setSelectedId(null)} width={threadWidth} onResize={resizeThread} />
+          <ThreadPanel
+            channel={selected.channel} ulid={selected.sk.replace("MSG#", "")} message={selected} onClose={() => setSelectedId(null)} width={threadWidth} onResize={resizeThread}
+            initialMsgUlid={initialMsgUlid}
+            onCopyLink={(msgUlid) => copyLink(buildMessageLink({ view: "questions", thread: selectedId ?? undefined, msg: msgUlid }))}
+          />
         )}
         {channelThread && view === "channel" && (
-          <ThreadPanel channel={channelThread.channel} ulid={channelThread.sk.replace("MSG#", "")} message={channelThread} onClose={() => setChannelThread(null)} width={threadWidth} onResize={resizeThread} />
+          <ThreadPanel
+            channel={channelThread.channel} ulid={channelThread.sk.replace("MSG#", "")} message={channelThread} onClose={() => setChannelThread(null)} width={threadWidth} onResize={resizeThread}
+            initialMsgUlid={initialMsgUlid}
+            onCopyLink={(msgUlid) => copyLink(buildMessageLink({ view: "channel", channel: activeChannel, thread: channelThread.sk.replace("MSG#", ""), msg: msgUlid }))}
+          />
         )}
       </div>
 

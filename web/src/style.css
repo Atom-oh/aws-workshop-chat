@@ -23,6 +23,10 @@ body[data-theme="projector"] {
   --c-focus: #0972d3; --c-shadow: 0 2px 12px rgba(0,7,22,.18);
 }
 @keyframes pulseDot { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+/* Flash a row that was jumped to via a permalink (?msg=<ulid>) — starts tinted, fades to
+   transparent so it reads as "you are here" without leaving a permanent mark. */
+@keyframes msgFlash { from { background: rgba(var(--c-accent-rgb), .22); } to { background: transparent; } }
+.msg-flash { animation: msgFlash 2s ease-out; }
 
 /* Hover/focus utilities for elements styled inline — kept as classNames since these are pure
    presentational states, not worth threading useState/onMouseEnter through every button. */

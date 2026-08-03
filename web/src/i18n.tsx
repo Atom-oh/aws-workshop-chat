@@ -46,6 +46,8 @@ const DICT: Record<string, string> = {
   "해결": "Resolved",
   "미해결": "Open",
   "아직 답변이 없습니다.": "No replies yet.",
+  "링크 복사": "Copy link",
+  "링크를 복사했습니다": "Link copied",
 
   // Operator console
   "Workshop Chat · 운영자": "Workshop Chat · Operator",

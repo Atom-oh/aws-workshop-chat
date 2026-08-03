@@ -8,7 +8,7 @@ import Attachment from "./Attachment";
 import Resizer from "./Resizer";
 import { useResizableWidth } from "./useResizableWidth";
 import { formatBytes } from "./media";
-import { readParams, setParams } from "./urlState";
+import { readParams, setParams, buildMessageLink, useHighlight } from "./urlState";
 import { useLocale, LocaleToggle } from "./i18n";
 
 const ANNOUNCEMENTS_SLUG = "announcements";
@@ -86,8 +86,9 @@ function MessageRow({ m, children }: { m: Message; children?: React.ReactNode })
   );
 }
 
-function ThreadPanel({ slug, message, onClose, width, onResize }: {
+function ThreadPanel({ slug, message, onClose, width, onResize, initialMsgUlid, onCopyLink }: {
   slug: string; message: Message; onClose: () => void; width: number; onResize: (deltaX: number) => void;
+  initialMsgUlid?: string | null; onCopyLink: (ulid: string) => void;
 }) {
   const { locale, t } = useLocale();
   const rootUlid = message.sk.replace("MSG#", "");
@@ -99,6 +100,8 @@ function ThreadPanel({ slug, message, onClose, width, onResize }: {
     setReplies((await api.threadReplies(rootUlid)).replies);
   }
   useEffect(() => { load(); }, [rootUlid]);
+
+  const highlighted = useHighlight([message, ...replies], initialMsgUlid);
 
   async function send() {
     if (!draft.trim() && attachments.length === 0) return;
@@ -117,23 +120,30 @@ function ThreadPanel({ slug, message, onClose, width, onResize }: {
         <button onClick={onClose} style={{ width: 28, height: 28, border: 0, borderRadius: 8, background: "rgba(255,255,255,.07)", color: "rgba(255,255,255,.6)", cursor: "pointer" }}>×</button>
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: "16px 18px" }}>
-        <div style={{ fontSize: 14.5, lineHeight: 1.6, color: "#fff", marginBottom: 12 }}><Markdown text={message.body} /></div>
+        <div data-msg-anchor={rootUlid} className={highlighted === rootUlid ? "msg-flash" : undefined} style={{ borderRadius: 8, padding: 4, margin: -4, marginBottom: 8 }}>
+          <div style={{ fontSize: 14.5, lineHeight: 1.6, color: "#fff" }}><Markdown text={message.body} /></div>
+          <button onClick={() => onCopyLink(rootUlid)} style={{ marginTop: 6, border: "none", background: "transparent", color: "rgba(255,255,255,.4)", fontSize: 11.5, cursor: "pointer", padding: 0 }}>🔗 {t("링크 복사")}</button>
+        </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 14, borderTop: `1px solid ${COLORS.border}`, paddingTop: 14 }}>
-          {replies.map((r) => (
-            <div key={r.sk} style={{ display: "flex", gap: 10 }}>
-              <div style={{ width: 28, height: 28, flex: "none", borderRadius: 7, background: avatarColor(r.participantId), display: "flex", alignItems: "center", justifyContent: "center", font: "700 10px/1 inherit" }}>
-                {avatarInitials(r.participantId, locale)}
-              </div>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
-                  <span style={{ fontSize: 12.5, fontWeight: 500 }}>{displayName(r.participantId, locale)}</span>
-                  <span style={{ fontSize: 11, color: "rgba(255,255,255,.3)", fontFamily: "ui-monospace,Menlo,monospace" }}>{timeLabel(r.createdAt, locale)}</span>
+          {replies.map((r) => {
+            const rUlid = r.sk.replace("MSG#", "");
+            return (
+              <div key={r.sk} data-msg-anchor={rUlid} className={highlighted === rUlid ? "msg-flash" : undefined} style={{ display: "flex", gap: 10, borderRadius: 8, padding: 4, margin: -4 }}>
+                <div style={{ width: 28, height: 28, flex: "none", borderRadius: 7, background: avatarColor(r.participantId), display: "flex", alignItems: "center", justifyContent: "center", font: "700 10px/1 inherit" }}>
+                  {avatarInitials(r.participantId, locale)}
                 </div>
-                <div style={{ fontSize: 13.5, lineHeight: 1.6, color: "rgba(255,255,255,.85)" }}><Markdown text={r.body} /></div>
-                {r.media?.map((key) => <Attachment key={key} mediaKey={key} />)}
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+                    <span style={{ fontSize: 12.5, fontWeight: 500 }}>{displayName(r.participantId, locale)}</span>
+                    <span style={{ fontSize: 11, color: "rgba(255,255,255,.3)", fontFamily: "ui-monospace,Menlo,monospace" }}>{timeLabel(r.createdAt, locale)}</span>
+                  </div>
+                  <div style={{ fontSize: 13.5, lineHeight: 1.6, color: "rgba(255,255,255,.85)" }}><Markdown text={r.body} /></div>
+                  {r.media?.map((key) => <Attachment key={key} mediaKey={key} />)}
+                  <button onClick={() => onCopyLink(rUlid)} style={{ marginTop: 4, border: "none", background: "transparent", color: "rgba(255,255,255,.35)", fontSize: 11, cursor: "pointer", padding: 0 }}>🔗 {t("링크 복사")}</button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
           {replies.length === 0 && <div style={{ fontSize: 13, color: COLORS.dim }}>{t("아직 답변이 없습니다.")}</div>}
         </div>
       </div>
@@ -235,14 +245,34 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [asQuestion, setAsQuestion] = useState(false);
   const [selectedUlid, setSelectedUlid] = useState<string | null>(initialParams.get("thread"));
+  const initialMsgUlid = initialParams.get("msg");
   const [aiQuery, setAiQuery] = useState("");
   const [aiHistory, setAiHistory] = useState<AiEntry[]>([]);
   const [aiBusy, setAiBusy] = useState(false);
   const [sidebarWidth, resizeSidebar] = useResizableWidth("wc:sidebarWidth", 224, 160, 420);
   const [threadWidth, resizeThread] = useResizableWidth("wc:threadWidth", 392, 280, 1200);
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<any>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const messagesRef = useRef<Message[]>([]);
   messagesRef.current = messages;
+
+  function showToast(msg: string) {
+    clearTimeout(toastTimer.current);
+    setToast(msg);
+    toastTimer.current = setTimeout(() => setToast(null), 2600);
+  }
+
+  async function copyLink(url: string) {
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast(t("링크를 복사했습니다"));
+    } catch {
+      showToast(url);
+    }
+  }
+
+  const mainHighlighted = useHighlight(messages, initialMsgUlid);
 
   useEffect(() => {
     api.labStep().then((r) => setLabStep(r.step));
@@ -482,9 +512,15 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
                 {sorted.filter((m) => !m.deleted).map((m) => {
                   const ulid = m.sk.replace("MSG#", "");
                   return (
-                    <div key={m.sk} onClick={() => setSelectedUlid(ulid)} style={{ cursor: "pointer", background: selectedUlid === ulid ? "rgba(255,153,0,.055)" : "transparent" }}>
+                    <div
+                      key={m.sk}
+                      data-msg-anchor={ulid}
+                      onClick={() => setSelectedUlid(ulid)}
+                      className={mainHighlighted === ulid ? "msg-flash" : undefined}
+                      style={{ cursor: "pointer", background: selectedUlid === ulid ? "rgba(255,153,0,.055)" : "transparent" }}
+                    >
                       <MessageRow m={m}>
-                        <div style={{ display: "flex", gap: 12, marginTop: 6 }}>
+                        <div style={{ display: "flex", gap: 12, marginTop: 6, flexWrap: "wrap" }}>
                           <button onClick={(e) => { e.stopPropagation(); setSelectedUlid(ulid); }} style={{ border: "none", background: "transparent", color: COLORS.orange, fontSize: 12.5, cursor: "pointer", padding: 0 }}>
                             {m.replyCount ? `💬 ${m.replyCount} ${locale === "en" ? (m.replyCount === 1 ? "reply" : "replies") : "개의 댓글"}` : t("스레드")}
                           </button>
@@ -500,6 +536,7 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
                           {session.role === "operator" && (
                             <button onClick={(e) => { e.stopPropagation(); api.deleteMessage(active, ulid); }} style={{ border: "none", background: "transparent", color: "rgba(255,255,255,.4)", fontSize: 12.5, cursor: "pointer", padding: 0 }}>{t("삭제")}</button>
                           )}
+                          <button onClick={(e) => { e.stopPropagation(); copyLink(buildMessageLink({ channel: active, msg: ulid })); }} style={{ border: "none", background: "transparent", color: "rgba(255,255,255,.4)", fontSize: 12.5, cursor: "pointer", padding: 0 }}>🔗 {t("링크 복사")}</button>
                         </div>
                       </MessageRow>
                     </div>
@@ -531,9 +568,25 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
         </div>
 
         {selected && view === "channel" && (
-          <ThreadPanel slug={active} message={selected} onClose={() => setSelectedUlid(null)} width={threadWidth} onResize={resizeThread} />
+          <ThreadPanel
+            slug={active} message={selected} onClose={() => setSelectedUlid(null)} width={threadWidth} onResize={resizeThread}
+            initialMsgUlid={initialMsgUlid}
+            onCopyLink={(ulid) => copyLink(buildMessageLink({ channel: active, thread: selectedUlid ?? undefined, msg: ulid }))}
+          />
         )}
       </div>
+
+      {toast && (
+        <div style={{
+          position: "fixed", bottom: 22, left: "50%", transform: "translateX(-50%)", zIndex: 80,
+          display: "flex", alignItems: "center", gap: 10, padding: "11px 18px", borderRadius: 999,
+          background: "#232F3E", border: "1px solid rgba(255,255,255,.14)", boxShadow: "0 4px 20px rgba(0,7,22,.5)",
+          fontSize: 13, fontWeight: 500,
+        }}>
+          <span style={{ width: 6, height: 6, borderRadius: "50%", background: COLORS.orange, flex: "none" }} />
+          {toast}
+        </div>
+      )}
     </div>
   );
 }
