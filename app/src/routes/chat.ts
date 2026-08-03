@@ -25,6 +25,7 @@ import {
 
 const MAX_BODY_LENGTH = 4000;
 const MAX_MEDIA_PER_MESSAGE = 4;
+const ANNOUNCEMENTS_SLUG = "announcements"; // seeded in bootstrap.ts; kept in sync with web/src/Chat.tsx
 
 export async function chatRoutes(app: FastifyInstance) {
   app.get("/api/channels", async (_req, reply) => {
@@ -81,6 +82,12 @@ export async function chatRoutes(app: FastifyInstance) {
     }
 
     const slug = (req.params as any).slug;
+    // The "공지로 올리기" UI button is operator-only, but that's just a hidden control — anyone
+    // could otherwise POST straight to this channel and fake an announcement, so it's enforced
+    // here too, not just in the client.
+    if (slug === ANNOUNCEMENTS_SLUG && !threadId && session.role !== "operator") {
+      return reply.code(403).send({ error: "only the operator can post announcements" });
+    }
     const labStep = await getLabStep();
 
     let message;
