@@ -131,6 +131,8 @@ export const api = {
     "/api/operator/roster",
   ),
 
+  operatorLoginLink: () => req<{ loginUrl: string }>("/api/operator/login-link"),
+
   aiQueries: () => req<{ queries: AiQuery[] }>("/api/operator/ai-queries"),
   aiFeedback: (aiUlid: string, feedback: "up" | "down") =>
     req(`/api/ai/${aiUlid}/feedback`, { method: "POST", body: JSON.stringify({ feedback }) }),

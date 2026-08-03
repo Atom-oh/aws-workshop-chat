@@ -39,9 +39,12 @@ export async function authRoutes(app: FastifyInstance) {
     const payload = verifyToken(decodeURIComponent(t), config.sessionSecret);
     if (!payload) return reply.code(403).send({ error: "invalid or expired join link" });
 
-    await onLoginSuccess(payload.participantId);
+    // Operator links must not touch onLoginSuccess — it creates a participant DB record and a
+    // login timeline event, which would falsely count the operator as a participant in
+    // attendance stats and the xlsx export (see /api/login/operator, which skips it too).
+    if (payload.role === "participant") await onLoginSuccess(payload.participantId);
     mintSessionCookie(reply, { participantId: payload.participantId, role: payload.role, sessionSuffix: payload.sessionSuffix });
-    reply.redirect("/");
+    reply.redirect(payload.role === "operator" ? "/operator" : "/");
   });
 
   // Fallback #1 (§5.4, §12.4): participant ID + one shared passphrase, never per-participant

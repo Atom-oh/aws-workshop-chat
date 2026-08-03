@@ -761,6 +761,13 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
             <span style={{ width: 9, height: 9, borderRadius: 2, background: COLORS.orange }} />
             {theme === "projector" ? t("프로젝터 모드") : t("다크 모드")}
           </button>
+          <button
+            onClick={() => api.operatorLoginLink().then(({ loginUrl }) => copyLink(loginUrl))}
+            title={t("로그인 링크 복사")}
+            style={{ height: 32, padding: "0 13px", border: `1px solid ${COLORS.lineStrong}`, borderRadius: 999, background: "transparent", color: COLORS.fg2, font: "500 12.5px/1 inherit", cursor: "pointer", whiteSpace: "nowrap" }}
+          >
+            🔗 {t("로그인 링크 복사")}
+          </button>
           <LocaleToggle />
           <div style={{ width: 1, height: 24, background: "rgba(var(--c-w),.12)" }} />
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

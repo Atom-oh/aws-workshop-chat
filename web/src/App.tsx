@@ -20,18 +20,19 @@ function AppInner() {
   if (session === "loading") return null;
   if (!session) return <Login onLoggedIn={refreshSession} />;
 
+  async function onLogout() {
+    await api.logout();
+    setSession(null);
+  }
+
   const onOperatorRoute = location.pathname === "/operator";
   if (onOperatorRoute && session.role !== "operator") {
     return (
       <div className="container">
         <p>{t("운영자만 접근할 수 있습니다.")}</p>
+        <button onClick={onLogout}>{t("로그아웃")}</button>
       </div>
     );
-  }
-
-  async function onLogout() {
-    await api.logout();
-    setSession(null);
   }
 
   return onOperatorRoute ? <Operator onLogout={onLogout} /> : <Chat session={session} onLogout={onLogout} />;

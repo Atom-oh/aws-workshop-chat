@@ -115,6 +115,7 @@ const DICT: Record<string, string> = {
   "프로젝터 가시성 테마 전환": "Toggle projector-visibility theme",
   "프로젝터 모드": "Projector mode",
   "다크 모드": "Dark mode",
+  "로그인 링크 복사": "Copy login link",
   "참가자에게 보이지 않음": "not visible to participants",
 
   // Login

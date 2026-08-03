@@ -21,9 +21,9 @@ import {
 // Nothing here is stored separately; raising PARTICIPANT_COUNT and redeploying just grows this
 // list, matching the credentials provisioner's own idempotent behavior.
 
-function buildJoinUrl(req: any, participantId: string): string {
+function buildJoinUrl(req: any, participantId: string, role: "participant" | "operator" = "participant"): string {
   const exp = Math.floor(Date.now() / 1000) + config.sessionTtlSeconds;
-  const token = issueToken({ participantId, role: "participant", exp }, config.sessionSecret);
+  const token = issueToken({ participantId, role, exp }, config.sessionSecret);
   const origin = `${req.protocol}://${req.headers.host}`;
   return `${origin}/j?t=${encodeURIComponent(token)}`;
 }
@@ -58,6 +58,14 @@ export async function operatorRoutes(app: FastifyInstance) {
       return { participantId, joinUrl: buildJoinUrl(req, participantId) };
     });
     reply.send({ roster, participantPassphrase: config.participantPassphrase });
+  });
+
+  // A bookmarkable one-click login for the operator's own account — the same mechanism as the
+  // participant join link above, just signed with role "operator". Gated by requireOperator so
+  // minting one still requires a normal password login once.
+  app.get("/api/operator/login-link", async (req, reply) => {
+    if (!requireOperator(req, reply)) return;
+    reply.send({ loginUrl: buildJoinUrl(req, "operator", "operator") });
   });
 
   app.get("/api/operator/roster.csv", async (req, reply) => {
