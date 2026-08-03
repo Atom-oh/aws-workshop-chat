@@ -469,7 +469,7 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<any>(null);
   const [sidebarWidth, resizeSidebar] = useResizableWidth("wc:opSidebarWidth", 264, 200, 460);
-  const [threadWidth, resizeThread] = useResizableWidth("wc:opThreadWidth", 392, 280, 720);
+  const [threadWidth, resizeThread] = useResizableWidth("wc:opThreadWidth", 392, 280, 1200);
 
   function showToast(msg: string) {
     clearTimeout(toastTimer.current);

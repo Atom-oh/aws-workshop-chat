@@ -13,4 +13,6 @@ infra/cdk.context.json
 # ad-hoc debug screenshots and Playwright MCP session artifacts, not source
 .playwright-mcp/
 image.png
+image copy.png
 Screenshot *.png
+*-drag.png

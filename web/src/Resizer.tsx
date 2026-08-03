@@ -35,11 +35,11 @@ export default function Resizer({ onResize }: { onResize: (deltaX: number) => vo
       onMouseDown={onMouseDown}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      style={{ width: 7, flex: "none", cursor: "col-resize", position: "relative" }}
+      style={{ width: 17, flex: "none", cursor: "col-resize", position: "relative" }}
     >
       <div
         style={{
-          position: "absolute", left: 3, top: 0, bottom: 0, width: 1,
+          position: "absolute", left: 8, top: 0, bottom: 0, width: 1,
           background: hover || active ? "#FF9900" : "rgba(255,255,255,.09)",
           transition: active ? "none" : "background 120ms",
         }}

@@ -232,7 +232,7 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
   const [aiHistory, setAiHistory] = useState<AiEntry[]>([]);
   const [aiBusy, setAiBusy] = useState(false);
   const [sidebarWidth, resizeSidebar] = useResizableWidth("wc:sidebarWidth", 224, 160, 420);
-  const [threadWidth, resizeThread] = useResizableWidth("wc:threadWidth", 392, 280, 720);
+  const [threadWidth, resizeThread] = useResizableWidth("wc:threadWidth", 392, 280, 1200);
   const wsRef = useRef<WebSocket | null>(null);
   const messagesRef = useRef<Message[]>([]);
   messagesRef.current = messages;
