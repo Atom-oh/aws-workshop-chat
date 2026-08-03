@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useLocale } from "./i18n";
+import { COLORS } from "./theme";
 
 // Enter sends, Shift+Enter inserts a newline — except while an IME composition is still in
 // progress (Korean/Japanese/Chinese input): the Enter that confirms the current syllable block
@@ -41,7 +42,7 @@ export default function Composer({
   }
 
   return (
-    <div style={{ border: "1px solid rgba(255,255,255,.14)", borderRadius: 12, background: "rgba(255,255,255,.04)", padding: "10px 12px" }}>
+    <div style={{ border: `1px solid ${COLORS.lineStrong}`, borderRadius: 12, background: COLORS.fill, padding: "10px 12px" }}>
       {extra}
       <textarea
         ref={ref}
@@ -53,11 +54,11 @@ export default function Composer({
         placeholder={placeholder}
         style={{
           width: "100%", border: "none", outline: "none", resize: "none", background: "transparent",
-          color: "#fff", font: "400 13.5px/1.5 inherit", padding: 0,
+          color: COLORS.text, font: "400 13.5px/1.5 inherit", padding: 0,
         }}
       />
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
-        <span style={{ fontSize: 11.5, color: "rgba(255,255,255,.45)" }}>{t("Enter로 보내기 · Shift+Enter로 줄바꿈 · `code` · ```코드블록```")}</span>
+        <span style={{ fontSize: 11.5, color: COLORS.fg3 }}>{t("Enter로 보내기 · Shift+Enter로 줄바꿈 · `code` · ```코드블록```")}</span>
         <div style={{ display: "flex", gap: 8 }}>
           {onAttachFiles && (
             <>
@@ -74,7 +75,7 @@ export default function Composer({
               <button
                 onClick={() => fileRef.current?.click()}
                 title={t("파일 첨부")}
-                style={{ height: 30, width: 30, border: "1px solid rgba(255,255,255,.14)", borderRadius: 999, background: "transparent", color: "rgba(255,255,255,.7)", cursor: "pointer", fontSize: 14 }}
+                style={{ height: 30, width: 30, border: `1px solid ${COLORS.lineStrong}`, borderRadius: 999, background: "transparent", color: COLORS.fg2, cursor: "pointer", fontSize: 14 }}
               >
                 📎
               </button>
@@ -82,7 +83,7 @@ export default function Composer({
           )}
           <button
             onClick={onSend}
-            style={{ height: 30, padding: "0 14px", border: 0, borderRadius: 999, background: "#FF9900", color: "#0F1B2D", font: "700 12.5px/1 inherit", cursor: "pointer" }}
+            style={{ height: 30, padding: "0 14px", border: 0, borderRadius: 999, background: COLORS.orange, color: COLORS.onAccent, font: "700 12.5px/1 inherit", cursor: "pointer" }}
           >
             {t("보내기")}
           </button>

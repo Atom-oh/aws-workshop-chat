@@ -13,6 +13,8 @@ import { useLocale, LocaleToggle } from "./i18n";
 
 const ANNOUNCEMENTS_SLUG = "announcements";
 
+type Theme = "midnight" | "projector";
+
 interface PendingAttachment {
   key: string;
   name: string;
@@ -45,7 +47,7 @@ function NavItem({ icon, iconColor, label, count, active, onClick }: any) {
       onClick={onClick}
       style={{
         display: "flex", alignItems: "center", gap: 8, height: 32, padding: "0 10px", borderRadius: 8,
-        cursor: "pointer", background: active ? "rgba(255,255,255,.09)" : "transparent", fontSize: 14,
+        cursor: "pointer", background: active ? "rgba(var(--c-w),.09)" : "transparent", fontSize: 14,
       }}
     >
       <span style={{ width: 15, textAlign: "center", color: iconColor, fontSize: 12 }}>{icon}</span>
@@ -67,18 +69,18 @@ function MessageRow({ m, children }: { m: Message; children?: React.ReactNode })
       <div style={{ minWidth: 0, flex: 1 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3, flexWrap: "wrap" }}>
           <span style={{ fontSize: 13.5, fontWeight: 700 }}>{displayName(m.participantId, locale)}</span>
-          <span style={{ fontSize: 11, color: "rgba(255,255,255,.3)", fontFamily: "ui-monospace,Menlo,monospace" }}>{timeLabel(m.createdAt, locale)}</span>
+          <span style={{ fontSize: 11, color: "rgba(var(--c-w),.3)", fontFamily: "ui-monospace,Menlo,monospace" }}>{timeLabel(m.createdAt, locale)}</span>
           {m.kind === "question" && (
             <span style={{
               display: "inline-flex", alignItems: "center", gap: 5, height: 18, padding: "0 7px", borderRadius: 6,
-              background: m.status === "resolved" ? "rgba(1,168,141,.16)" : "rgba(255,153,0,.16)",
-              color: m.status === "resolved" ? COLORS.tealText : "#FFB84D", font: "700 10.5px/1 inherit",
+              background: m.status === "resolved" ? "rgba(var(--c-ok-rgb),.16)" : "rgba(var(--c-accent-rgb),.16)",
+              color: m.status === "resolved" ? COLORS.tealText : COLORS.orangeText, font: "700 10.5px/1 inherit",
             }}>
               {m.status === "resolved" ? `✓ ${t("해결")}` : t("미해결")} · 👍{m.upvotes}
             </span>
           )}
         </div>
-        <div style={{ fontSize: 14, lineHeight: 1.6, color: "rgba(255,255,255,.92)" }}><Markdown text={m.body} /></div>
+        <div style={{ fontSize: 14, lineHeight: 1.6, color: "rgba(var(--c-w),.92)" }}><Markdown text={m.body} /></div>
         {m.media?.map((key) => <Attachment key={key} mediaKey={key} />)}
         {children}
       </div>
@@ -117,12 +119,12 @@ function ThreadPanel({ slug, message, onClose, width, onResize, initialMsgUlid, 
       <div style={{ width, flex: "none", background: COLORS.bgDark, borderLeft: `1px solid ${COLORS.border}`, display: "flex", flexDirection: "column", minHeight: 0 }}>
       <div style={{ flex: "none", display: "flex", alignItems: "center", gap: 10, padding: "0 14px 0 18px", height: 52, borderBottom: `1px solid ${COLORS.border}` }}>
         <div style={{ flex: 1, minWidth: 0, fontSize: 14.5, fontWeight: 700 }}>{t("스레드")}</div>
-        <button onClick={onClose} style={{ width: 28, height: 28, border: 0, borderRadius: 8, background: "rgba(255,255,255,.07)", color: "rgba(255,255,255,.6)", cursor: "pointer" }}>×</button>
+        <button onClick={onClose} style={{ width: 28, height: 28, border: 0, borderRadius: 8, background: "rgba(var(--c-w),.07)", color: "rgba(var(--c-w),.6)", cursor: "pointer" }}>×</button>
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: "16px 18px" }}>
         <div data-msg-anchor={rootUlid} className={highlighted === rootUlid ? "msg-flash" : undefined} style={{ borderRadius: 8, padding: 4, margin: -4, marginBottom: 8 }}>
-          <div style={{ fontSize: 14.5, lineHeight: 1.6, color: "#fff" }}><Markdown text={message.body} /></div>
-          <button onClick={() => onCopyLink(rootUlid)} style={{ marginTop: 6, border: "none", background: "transparent", color: "rgba(255,255,255,.4)", fontSize: 11.5, cursor: "pointer", padding: 0 }}>🔗 {t("링크 복사")}</button>
+          <div style={{ fontSize: 14.5, lineHeight: 1.6, color: COLORS.text }}><Markdown text={message.body} /></div>
+          <button onClick={() => onCopyLink(rootUlid)} style={{ marginTop: 6, border: "none", background: "transparent", color: "rgba(var(--c-w),.4)", fontSize: 11.5, cursor: "pointer", padding: 0 }}>🔗 {t("링크 복사")}</button>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 14, borderTop: `1px solid ${COLORS.border}`, paddingTop: 14 }}>
           {replies.map((r) => {
@@ -135,11 +137,11 @@ function ThreadPanel({ slug, message, onClose, width, onResize, initialMsgUlid, 
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
                     <span style={{ fontSize: 12.5, fontWeight: 500 }}>{displayName(r.participantId, locale)}</span>
-                    <span style={{ fontSize: 11, color: "rgba(255,255,255,.3)", fontFamily: "ui-monospace,Menlo,monospace" }}>{timeLabel(r.createdAt, locale)}</span>
+                    <span style={{ fontSize: 11, color: "rgba(var(--c-w),.3)", fontFamily: "ui-monospace,Menlo,monospace" }}>{timeLabel(r.createdAt, locale)}</span>
                   </div>
-                  <div style={{ fontSize: 13.5, lineHeight: 1.6, color: "rgba(255,255,255,.85)" }}><Markdown text={r.body} /></div>
+                  <div style={{ fontSize: 13.5, lineHeight: 1.6, color: "rgba(var(--c-w),.85)" }}><Markdown text={r.body} /></div>
                   {r.media?.map((key) => <Attachment key={key} mediaKey={key} />)}
-                  <button onClick={() => onCopyLink(rUlid)} style={{ marginTop: 4, border: "none", background: "transparent", color: "rgba(255,255,255,.35)", fontSize: 11, cursor: "pointer", padding: 0 }}>🔗 {t("링크 복사")}</button>
+                  <button onClick={() => onCopyLink(rUlid)} style={{ marginTop: 4, border: "none", background: "transparent", color: "rgba(var(--c-w),.35)", fontSize: 11, cursor: "pointer", padding: 0 }}>🔗 {t("링크 복사")}</button>
                 </div>
               </div>
             );
@@ -166,10 +168,10 @@ function AttachmentChips({ attachments, onRemove }: { attachments: PendingAttach
   return (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
       {attachments.map((a) => (
-        <div key={a.key} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 8px", borderRadius: 999, background: "rgba(255,255,255,.08)", fontSize: 12 }}>
+        <div key={a.key} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 8px", borderRadius: 999, background: "rgba(var(--c-w),.08)", fontSize: 12 }}>
           <span>📎 {a.name}</span>
           <span style={{ color: COLORS.dim }}>{formatBytes(a.sizeBytes)}</span>
-          <button onClick={() => onRemove(a.key)} style={{ border: "none", background: "transparent", color: "rgba(255,255,255,.5)", cursor: "pointer", padding: 0, fontSize: 13 }}>×</button>
+          <button onClick={() => onRemove(a.key)} style={{ border: "none", background: "transparent", color: "rgba(var(--c-w),.5)", cursor: "pointer", padding: 0, fontSize: 13 }}>×</button>
         </div>
       ))}
     </div>
@@ -190,17 +192,17 @@ function AiView({ history, aiQuery, setAiQuery, aiBusy, ask, onFeedback }: {
       <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
         {history.map((h, i) => (
           <div key={i}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "rgba(255,255,255,.85)", marginBottom: 8 }}>{h.query}</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "rgba(var(--c-w),.85)", marginBottom: 8 }}>{h.query}</div>
             <div style={{
-              border: `1px solid ${h.error ? "rgba(221,52,76,.45)" : "rgba(1,168,141,.3)"}`, borderRadius: 12,
-              background: "rgba(255,255,255,.03)", padding: "13px 15px",
+              border: `1px solid ${h.error ? "rgba(var(--c-danger-rgb),.45)" : "rgba(var(--c-ok-rgb),.3)"}`, borderRadius: 12,
+              background: "rgba(var(--c-w),.03)", padding: "13px 15px",
             }}>
-              <div style={{ fontSize: 14, lineHeight: 1.6, color: "#fff" }}>
+              <div style={{ fontSize: 14, lineHeight: 1.6, color: COLORS.text }}>
                 <Markdown text={h.answer} renderMermaid={!h.streaming} />
                 {h.streaming && <span style={{ opacity: 0.5 }}>▌</span>}
               </div>
               {!h.streaming && h.refDocs.length > 0 && (
-                <div style={{ marginTop: 9, fontSize: 11.5, color: "rgba(255,255,255,.4)", fontFamily: "ui-monospace,Menlo,monospace" }}>
+                <div style={{ marginTop: 9, fontSize: 11.5, color: "rgba(var(--c-w),.4)", fontFamily: "ui-monospace,Menlo,monospace" }}>
                   {t("참고")}: {h.refDocs.join(", ")}
                 </div>
               )}
@@ -208,13 +210,13 @@ function AiView({ history, aiQuery, setAiQuery, aiBusy, ask, onFeedback }: {
                 <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                   <button
                     onClick={() => onFeedback(i, "up")}
-                    style={{ border: "1px solid rgba(255,255,255,.14)", background: h.feedback === "up" ? "rgba(1,168,141,.18)" : "transparent", color: h.feedback === "up" ? COLORS.tealText : "rgba(255,255,255,.6)", borderRadius: 999, height: 26, padding: "0 10px", cursor: "pointer", fontSize: 12 }}
+                    style={{ border: "1px solid rgba(var(--c-w),.14)", background: h.feedback === "up" ? "rgba(var(--c-ok-rgb),.18)" : "transparent", color: h.feedback === "up" ? COLORS.tealText : "rgba(var(--c-w),.6)", borderRadius: 999, height: 26, padding: "0 10px", cursor: "pointer", fontSize: 12 }}
                   >
                     👍 {t("도움됨")}
                   </button>
                   <button
                     onClick={() => onFeedback(i, "down")}
-                    style={{ border: "1px solid rgba(255,255,255,.14)", background: h.feedback === "down" ? "rgba(221,52,76,.18)" : "transparent", color: h.feedback === "down" ? COLORS.redText : "rgba(255,255,255,.6)", borderRadius: 999, height: 26, padding: "0 10px", cursor: "pointer", fontSize: 12 }}
+                    style={{ border: "1px solid rgba(var(--c-w),.14)", background: h.feedback === "down" ? "rgba(var(--c-danger-rgb),.18)" : "transparent", color: h.feedback === "down" ? COLORS.redText : "rgba(var(--c-w),.6)", borderRadius: 999, height: 26, padding: "0 10px", cursor: "pointer", fontSize: 12 }}
                   >
                     👎 {t("가이드에 없음")}
                   </button>
@@ -235,6 +237,16 @@ function AiView({ history, aiQuery, setAiQuery, aiBusy, ask, onFeedback }: {
 
 export default function Chat({ session, onLogout }: { session: Session; onLogout: () => void }) {
   const { locale, t } = useLocale();
+  const [theme, setTheme] = useState<Theme>(
+    () => (localStorage.getItem("wc:theme") as Theme | null) ?? "midnight",
+  );
+  useEffect(() => {
+    document.body.dataset.theme = theme;
+    localStorage.setItem("wc:theme", theme);
+    return () => { delete document.body.dataset.theme; };
+  }, [theme]);
+  const toggleTheme = () => setTheme((th) => (th === "projector" ? "midnight" : "projector"));
+
   const initialParams = useMemo(readParams, []);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [view, setView] = useState<"channel" | "ai">(initialParams.get("view") === "ai" ? "ai" : "channel");
@@ -463,7 +475,7 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
   const activeChannelName = channels.find((c) => c.pk.replace("CHANNEL#", "") === active)?.name ?? active;
 
   return (
-    <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: COLORS.bg, color: "#fff", fontSize: 14, overflow: "hidden" }}>
+    <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: COLORS.bg, color: COLORS.text, fontSize: 14, overflow: "hidden" }}>
       <div style={{ height: 56, flex: "none", display: "flex", alignItems: "center", gap: 16, padding: "0 16px", background: COLORS.bgDark, borderBottom: `1px solid ${COLORS.border}` }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flex: "none" }}>
           <div style={{ width: 26, height: 26, borderRadius: 6, background: COLORS.orange, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, color: COLORS.bgDark }}>W</div>
@@ -474,27 +486,38 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
         )}
         <div style={{ flex: 1 }} />
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <button
+            onClick={toggleTheme}
+            title={t("프로젝터 가시성 테마 전환")}
+            style={{ display: "flex", alignItems: "center", gap: 7, height: 30, padding: "0 12px", border: "1px solid rgba(var(--c-w),.2)", borderRadius: 999, background: "transparent", color: COLORS.text, font: "500 12.5px/1 inherit", cursor: "pointer", whiteSpace: "nowrap" }}
+          >
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: COLORS.orange }} />
+            {theme === "projector" ? t("프로젝터 모드") : t("다크 모드")}
+          </button>
           <LocaleToggle />
+          {session.role === "operator" && (
+            <a href="/operator" style={{ fontSize: 13, color: COLORS.orange, textDecoration: "none", fontWeight: 600 }}>{t("운영자 화면으로 이동")} →</a>
+          )}
           <span style={{ fontSize: 13, color: COLORS.dim }}>
             {displayName(session.role === "operator" ? "operator" : session.participantId, locale)}
           </span>
-          <button onClick={onLogout} style={{ height: 30, padding: "0 12px", border: "1px solid rgba(255,255,255,.2)", borderRadius: 999, background: "transparent", color: "#fff", cursor: "pointer" }}>{t("로그아웃")}</button>
+          <button onClick={onLogout} style={{ height: 30, padding: "0 12px", border: "1px solid rgba(var(--c-w),.2)", borderRadius: 999, background: "transparent", color: COLORS.text, cursor: "pointer" }}>{t("로그아웃")}</button>
         </div>
       </div>
 
       <div style={{ flex: 1, display: "flex", minHeight: 0, overflowX: "auto" }}>
         <div style={{ width: sidebarWidth, flex: "none", background: COLORS.bgDark, borderRight: `1px solid ${COLORS.border}`, display: "flex", flexDirection: "column", overflowY: "auto" }}>
-          <div style={{ padding: "14px 12px 4px", fontSize: 11, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "rgba(255,255,255,.35)" }}>{t("채널")}</div>
+          <div style={{ padding: "14px 12px 4px", fontSize: 11, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "rgba(var(--c-w),.35)" }}>{t("채널")}</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 1, padding: "0 8px 16px" }}>
             {channels.map((c) => {
               const slug = c.pk.replace("CHANNEL#", "");
               return (
-                <NavItem key={slug} icon="#" iconColor="rgba(255,255,255,.35)" label={c.name} active={view === "channel" && active === slug}
+                <NavItem key={slug} icon="#" iconColor="rgba(var(--c-w),.35)" label={c.name} active={view === "channel" && active === slug}
                   onClick={() => { setView("channel"); setActive(slug); setSelectedUlid(null); }} />
               );
             })}
           </div>
-          <div style={{ padding: "0 12px 4px", fontSize: 11, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "rgba(255,255,255,.35)" }}>{t("도우미")}</div>
+          <div style={{ padding: "0 12px 4px", fontSize: 11, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: "rgba(var(--c-w),.35)" }}>{t("도우미")}</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 1, padding: "0 8px" }}>
             <NavItem icon="✳" iconColor={COLORS.teal} label={t("AI 도우미")} active={view === "ai"} onClick={() => setView("ai")} />
           </div>
@@ -505,7 +528,7 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
           {view === "channel" && (
             <>
               <div style={{ flex: "none", display: "flex", alignItems: "center", gap: 10, padding: "0 20px", height: 52, borderBottom: `1px solid ${COLORS.border}` }}>
-                <span style={{ fontFamily: "ui-monospace,Menlo,monospace", color: "rgba(255,255,255,.4)", fontSize: 16 }}>#</span>
+                <span style={{ fontFamily: "ui-monospace,Menlo,monospace", color: "rgba(var(--c-w),.4)", fontSize: 16 }}>#</span>
                 <span style={{ fontSize: 16, fontWeight: 700 }}>{activeChannelName}</span>
               </div>
               <div style={{ flex: 1, overflowY: "auto", padding: "8px 0 8px" }}>
@@ -517,7 +540,7 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
                       data-msg-anchor={ulid}
                       onClick={() => setSelectedUlid(ulid)}
                       className={mainHighlighted === ulid ? "msg-flash" : undefined}
-                      style={{ cursor: "pointer", background: selectedUlid === ulid ? "rgba(255,153,0,.055)" : "transparent" }}
+                      style={{ cursor: "pointer", background: selectedUlid === ulid ? "rgba(var(--c-accent-rgb),.055)" : "transparent" }}
                     >
                       <MessageRow m={m}>
                         <div style={{ display: "flex", gap: 12, marginTop: 6, flexWrap: "wrap" }}>
@@ -525,18 +548,18 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
                             {m.replyCount ? `💬 ${m.replyCount} ${locale === "en" ? (m.replyCount === 1 ? "reply" : "replies") : "개의 댓글"}` : t("스레드")}
                           </button>
                           {m.kind === "question" && (
-                            <button onClick={(e) => { e.stopPropagation(); toggleUpvote(ulid); }} style={{ border: "none", background: "transparent", color: m.upvoterIds?.includes(session.participantId) ? COLORS.orange : "rgba(255,255,255,.6)", fontSize: 12.5, cursor: "pointer", padding: 0 }}>👍 {t("업보트")}</button>
+                            <button onClick={(e) => { e.stopPropagation(); toggleUpvote(ulid); }} style={{ border: "none", background: "transparent", color: m.upvoterIds?.includes(session.participantId) ? COLORS.orange : "rgba(var(--c-w),.6)", fontSize: 12.5, cursor: "pointer", padding: 0 }}>👍 {t("업보트")}</button>
                           )}
                           {m.kind === "question" && session.role === "operator" && m.status !== "resolved" && (
-                            <button onClick={(e) => { e.stopPropagation(); api.resolve(active, ulid); }} style={{ border: "none", background: "transparent", color: "#FFB84D", fontSize: 12.5, cursor: "pointer", padding: 0 }}>{t("해결로 표시")}</button>
+                            <button onClick={(e) => { e.stopPropagation(); api.resolve(active, ulid); }} style={{ border: "none", background: "transparent", color: COLORS.orangeText, fontSize: 12.5, cursor: "pointer", padding: 0 }}>{t("해결로 표시")}</button>
                           )}
                           {session.role === "operator" && active !== ANNOUNCEMENTS_SLUG && (
-                            <button onClick={(e) => { e.stopPropagation(); postAsAnnouncement(m); }} style={{ border: "none", background: "transparent", color: "rgba(255,255,255,.6)", fontSize: 12.5, cursor: "pointer", padding: 0 }}>{t("📌 공지로 올리기")}</button>
+                            <button onClick={(e) => { e.stopPropagation(); postAsAnnouncement(m); }} style={{ border: "none", background: "transparent", color: "rgba(var(--c-w),.6)", fontSize: 12.5, cursor: "pointer", padding: 0 }}>{t("📌 공지로 올리기")}</button>
                           )}
                           {session.role === "operator" && (
-                            <button onClick={(e) => { e.stopPropagation(); api.deleteMessage(active, ulid); }} style={{ border: "none", background: "transparent", color: "rgba(255,255,255,.4)", fontSize: 12.5, cursor: "pointer", padding: 0 }}>{t("삭제")}</button>
+                            <button onClick={(e) => { e.stopPropagation(); api.deleteMessage(active, ulid); }} style={{ border: "none", background: "transparent", color: "rgba(var(--c-w),.4)", fontSize: 12.5, cursor: "pointer", padding: 0 }}>{t("삭제")}</button>
                           )}
-                          <button onClick={(e) => { e.stopPropagation(); copyLink(buildMessageLink({ channel: active, msg: ulid })); }} style={{ border: "none", background: "transparent", color: "rgba(255,255,255,.4)", fontSize: 12.5, cursor: "pointer", padding: 0 }}>🔗 {t("링크 복사")}</button>
+                          <button onClick={(e) => { e.stopPropagation(); copyLink(buildMessageLink({ channel: active, msg: ulid })); }} style={{ border: "none", background: "transparent", color: "rgba(var(--c-w),.4)", fontSize: 12.5, cursor: "pointer", padding: 0 }}>🔗 {t("링크 복사")}</button>
                         </div>
                       </MessageRow>
                     </div>
@@ -580,7 +603,7 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
         <div style={{
           position: "fixed", bottom: 22, left: "50%", transform: "translateX(-50%)", zIndex: 80,
           display: "flex", alignItems: "center", gap: 10, padding: "11px 18px", borderRadius: 999,
-          background: "#232F3E", border: "1px solid rgba(255,255,255,.14)", boxShadow: "0 4px 20px rgba(0,7,22,.5)",
+          background: COLORS.bg3, border: "1px solid rgba(var(--c-w),.14)", boxShadow: "0 4px 20px rgba(0,7,22,.5)",
           fontSize: 13, fontWeight: 500,
         }}>
           <span style={{ width: 6, height: 6, borderRadius: "50%", background: COLORS.orange, flex: "none" }} />

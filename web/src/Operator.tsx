@@ -447,14 +447,36 @@ function AiLogView({ queries }: { queries: AiQuery[] }) {
 
 const GUIDE_ACCEPT = ".txt,.md,.html,.doc,.docx,.csv,.xls,.xlsx,.pdf,.jpeg,.jpg,.png";
 
+const INDEX_STATUS_META: Record<string, { label: string; color: keyof typeof COLORS; pulse?: boolean }> = {
+  pending: { label: "대기중", color: "fg3" },
+  indexing: { label: "인덱싱 중", color: "orangeText", pulse: true },
+  retrying: { label: "재시도 중", color: "orangeText", pulse: true },
+  indexed: { label: "인덱싱됨", color: "tealText" },
+  failed: { label: "인덱싱 실패", color: "redText" },
+};
+
+function IndexStatusBadge({ status }: { status?: GuideDoc["indexStatus"] }) {
+  const { t } = useLocale();
+  if (!status) return null;
+  const meta = INDEX_STATUS_META[status];
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: COLORS[meta.color], whiteSpace: "nowrap" }}>
+      <span style={{ width: 6, height: 6, borderRadius: "50%", background: COLORS[meta.color], flex: "none", animation: meta.pulse ? "pulseDot 1.6s ease-in-out infinite" : undefined }} />
+      {t(meta.label)}
+    </div>
+  );
+}
+
 function DocsView({ docs, reindexStatus, onUpload, onToggle, onDelete, onReindex }: {
-  docs: GuideDoc[]; reindexStatus: { status: string | null; startedAt?: string };
+  docs: GuideDoc[];
+  reindexStatus: { status: string | null; startedAt?: string; attempt?: number; maxAttempts?: number; failedDocs?: string[]; nextRetryAt?: string | null };
   onUpload: (files: FileList) => void; onToggle: (key: string) => void; onDelete: (key: string) => void; onReindex: () => void;
 }) {
   const { locale, t } = useLocale();
   const fileRef = useRef<HTMLInputElement | null>(null);
   const activeCount = docs.filter((d) => d.active).length;
   const ctxBytes = docs.filter((d) => d.active).reduce((a, d) => a + d.sizeBytes, 0);
+  const failedCount = reindexStatus.failedDocs?.length ?? 0;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
@@ -481,11 +503,24 @@ function DocsView({ docs, reindexStatus, onUpload, onToggle, onDelete, onReindex
             <div style={{ fontSize: 11.5, color: COLORS.dim }}>{t("사용 중 문서")}</div>
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 12, flexWrap: "wrap" }}>
           <div style={{ fontSize: 12.5, color: COLORS.dim }}>
             {t("마지막 재인덱싱")}: <span style={{ color: COLORS.text }}>{reindexStatus.status ?? t("없음")}</span>
             {reindexStatus.startedAt && <span> · {timeLabel(reindexStatus.startedAt, locale)}</span>}
+            {reindexStatus.attempt !== undefined && reindexStatus.maxAttempts !== undefined && (
+              <span> · {reindexStatus.attempt}/{reindexStatus.maxAttempts} {t("재시도")}</span>
+            )}
           </div>
+          {failedCount > 0 && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: COLORS.redText }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: COLORS.red }} />
+              {failedCount} {t("실패 문서")}
+              {reindexStatus.status === "RETRY_SCHEDULED" && reindexStatus.nextRetryAt && (
+                <span style={{ color: COLORS.fg3 }}>· {t("다음 재시도")} {timeLabel(reindexStatus.nextRetryAt, locale)}</span>
+              )}
+              {reindexStatus.status === "EXHAUSTED" && <span style={{ color: COLORS.fg3 }}>· {t("재시도 소진")}</span>}
+            </div>
+          )}
           <button
             onClick={onReindex}
             className="hover-accent-border"
@@ -510,13 +545,14 @@ function DocsView({ docs, reindexStatus, onUpload, onToggle, onDelete, onReindex
           </button>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(240px,1fr) 96px 96px 74px", gap: "0 12px", padding: "16px 4px 10px", fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "rgba(var(--c-w),.35)", borderBottom: `1px solid ${COLORS.border}` }}>
-          <div>{t("문서")}</div><div>{t("크기")}</div><div>{t("상태")}</div><div></div>
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(200px,1fr) 84px 112px 90px 70px", gap: "0 12px", padding: "16px 4px 10px", fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "rgba(var(--c-w),.35)", borderBottom: `1px solid ${COLORS.border}` }}>
+          <div>{t("문서")}</div><div>{t("크기")}</div><div>{t("인덱싱")}</div><div>{t("상태")}</div><div></div>
         </div>
         {docs.map((d) => (
-          <div key={d.key} style={{ display: "grid", gridTemplateColumns: "minmax(240px,1fr) 96px 96px 74px", gap: "0 12px", alignItems: "center", padding: "12px 4px", borderBottom: "1px solid rgba(var(--c-w),.055)" }}>
+          <div key={d.key} style={{ display: "grid", gridTemplateColumns: "minmax(200px,1fr) 84px 112px 90px 70px", gap: "0 12px", alignItems: "center", padding: "12px 4px", borderBottom: "1px solid rgba(var(--c-w),.055)" }}>
             <div style={{ minWidth: 0, fontFamily: "ui-monospace,Menlo,monospace", fontSize: 13, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{d.name}</div>
             <div style={{ fontFamily: "ui-monospace,Menlo,monospace", fontSize: 12.5, color: "rgba(var(--c-w),.6)" }}>{(d.sizeBytes / 1024).toFixed(0)} KB</div>
+            <div><IndexStatusBadge status={d.indexStatus} /></div>
             <div>
               <button onClick={() => onToggle(d.key)} style={{ display: "flex", alignItems: "center", gap: 8, border: 0, background: "transparent", cursor: "pointer", padding: 0, font: "500 12px/1 inherit", color: d.active ? COLORS.orangeText : "rgba(var(--c-w),.4)" }}>
                 <span style={{ width: 30, height: 17, borderRadius: 999, background: d.active ? COLORS.orange : "rgba(var(--c-w),.18)", position: "relative", flex: "none" }}>
@@ -614,7 +650,9 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
   const [selectedId, setSelectedId] = useState<string | null>(initialThreadUlid);
   const [aiQueries, setAiQueries] = useState<AiQuery[]>([]);
   const [docs, setDocs] = useState<GuideDoc[]>([]);
-  const [reindex, setReindex] = useState<{ status: string | null; startedAt?: string }>({ status: null });
+  const [reindex, setReindex] = useState<{
+    status: string | null; startedAt?: string; attempt?: number; maxAttempts?: number; failedDocs?: string[]; nextRetryAt?: string | null;
+  }>({ status: null });
   const [attendance, setAttendance] = useState<Attendance | null>(null);
   const [lastExport, setLastExport] = useState<string | null>(null);
   const [exportRowCounts, setExportRowCounts] = useState<Record<string, number> | null>(null);
@@ -674,11 +712,22 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
 
   useEffect(() => {
     if (view === "ai") api.aiQueries().then((r) => setAiQueries(r.queries));
-    if (view === "docs") {
-      api.guideDocs().then((r) => setDocs(r.docs));
-      api.reindexStatus().then(setReindex);
-    }
     if (view === "attendance") api.attendance().then(setAttendance);
+  }, [view]);
+
+  // Docs view polls on its own short interval (not just on entry) — indexing status changes in
+  // the background (the reindex retry loop ticks every 30s independently of this tab being
+  // open), so a one-shot fetch would go stale while the operator is watching it.
+  useEffect(() => {
+    if (view !== "docs") return;
+    let cancelled = false;
+    const load = () => {
+      api.guideDocs().then((r) => { if (!cancelled) setDocs(r.docs); });
+      api.reindexStatus().then((r) => { if (!cancelled) setReindex(r); });
+    };
+    load();
+    const interval = setInterval(load, 5000);
+    return () => { cancelled = true; clearInterval(interval); };
   }, [view]);
 
   const selected = useMemo(() => questions.find((q) => q.sk.replace("MSG#", "") === selectedId) ?? null, [questions, selectedId]);

@@ -52,7 +52,7 @@ export default function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
               style={inputStyle}
               value={id}
               onChange={(e) => setId(e.target.value)}
-              placeholder="123456789012 / admin@ws"
+              placeholder="012345678901@ws / admin@ws"
             />
           </div>
           <div style={{ marginBottom: 14 }}>

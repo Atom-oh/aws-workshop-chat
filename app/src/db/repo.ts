@@ -443,11 +443,13 @@ export async function getGuideReindexState(): Promise<GuideReindexItem | undefin
   return res.Item as GuideReindexItem | undefined;
 }
 
-export async function startGuideReindex(jobId: string, status: string) {
+// `attempt` defaults to 1 — an operator-triggered reindex (vs. the retry loop's own re-attempts,
+// which pass an explicit attempt number) always starts a fresh retry budget.
+export async function startGuideReindex(jobId: string, status: string, attempt = 1) {
   await ddb.send(
     new PutCommand({
       TableName: TABLE_NAME,
-      Item: { ...keys.guideReindex(), jobId, status, startedAt: new Date().toISOString() },
+      Item: { ...keys.guideReindex(), jobId, status, startedAt: new Date().toISOString(), attempt, failedDocs: [] },
     }),
   );
 }
@@ -460,6 +462,33 @@ export async function updateGuideReindexStatus(status: string) {
       UpdateExpression: "SET #s = :s",
       ExpressionAttributeNames: { "#s": "status" },
       ExpressionAttributeValues: { ":s": status },
+    }),
+  );
+}
+
+// Called by the retry loop (reindex-retry.ts) once a job completes — records which docs still
+// have zero chunks and either schedules another attempt or gives up, depending on `status`.
+export async function setGuideReindexOutcome(status: string, failedDocs: string[], nextRetryAt?: string) {
+  await ddb.send(
+    new UpdateCommand({
+      TableName: TABLE_NAME,
+      Key: keys.guideReindex(),
+      UpdateExpression: "SET #s = :s, failedDocs = :f, nextRetryAt = :n",
+      ExpressionAttributeNames: { "#s": "status" },
+      ExpressionAttributeValues: { ":s": status, ":f": failedDocs, ":n": nextRetryAt ?? null },
+    }),
+  );
+}
+
+// Called by the retry loop right before it starts a new ingestion job for a failed attempt.
+export async function bumpGuideReindexAttempt(jobId: string, status: string, attempt: number) {
+  await ddb.send(
+    new UpdateCommand({
+      TableName: TABLE_NAME,
+      Key: keys.guideReindex(),
+      UpdateExpression: "SET jobId = :j, #s = :s, startedAt = :t, attempt = :a",
+      ExpressionAttributeNames: { "#s": "status" },
+      ExpressionAttributeValues: { ":j": jobId, ":s": status, ":t": new Date().toISOString(), ":a": attempt },
     }),
   );
 }

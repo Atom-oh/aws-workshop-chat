@@ -13,7 +13,7 @@ async function ensureParticipantRecord(participantId: string) {
     pk: `USER#${participantId}`,
     sk: "META",
     participantId,
-    displayName: participantId.slice(-4),
+    displayName: participantId.split("@")[0].slice(-4),
     pwHash: "",
     questionCount: 0,
     aiQueryCount: 0,

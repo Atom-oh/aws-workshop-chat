@@ -14,13 +14,17 @@ function hmacHex(seed: string, label: string): string {
   return createHmac("sha256", seed).update(label).digest("hex");
 }
 
-/** 12-digit numeric ID, resembling an AWS account ID but mapping to no real account. */
+/**
+ * "<12-digit AWS-account-ID-shaped number>@ws" — the `@ws` suffix matches the operator
+ * account's own username convention (`admin@ws`) so every login, Cognito username, and
+ * roster row uses the same shape regardless of role.
+ */
 export function deriveParticipantId(seed: string, index: number): string {
   const hex = hmacHex(seed, `id:${index}`);
   // take enough hex chars to safely derive 12 decimal digits without modulo bias at this range
   const n = BigInt(`0x${hex.slice(0, 16)}`);
   const digits = (n % 1_000_000_000_000n).toString().padStart(12, "0");
-  return digits;
+  return `${digits}@ws`;
 }
 
 /** 10+ char password satisfying Cognito's default policy: upper, lower, digit, symbol. */

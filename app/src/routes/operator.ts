@@ -8,6 +8,8 @@ import { issueToken } from "../auth/token.js";
 import { deriveParticipantId } from "../auth/credentials.js";
 import { config } from "../config.js";
 import { invalidateGuideCache } from "../ai/ask.js";
+import { countChunksBySource } from "../ai/guide-index.js";
+import { reconcileCompletedJob } from "../ai/reindex-retry.js";
 import {
   listAllAiQueries,
   listParticipants,
@@ -29,7 +31,7 @@ function buildJoinUrl(req: any, participantId: string, role: "participant" | "op
 }
 
 const s3 = new S3Client({});
-const bedrockAgent = new BedrockAgentClient({});
+const bedrockAgent = new BedrockAgentClient({ region: process.env.BEDROCK_REGION });
 const GUIDE_BUCKET = process.env.GUIDE_BUCKET;
 const KB_ID = process.env.BEDROCK_KB_ID;
 const KB_DATA_SOURCE_ID = process.env.BEDROCK_KB_DATA_SOURCE_ID;
@@ -113,9 +115,9 @@ export async function operatorRoutes(app: FastifyInstance) {
       .filter((id) => !joinedIds.has(id))
       .map((participantId, i) => ({ participantId, index: i, joinUrl: buildJoinUrl(req, participantId) }));
     reply.send({
-      // noShowCount is `noShows.length`, not `expectedCount - joinedCount` — the passphrase
-      // login fallback lets anyone join with a self-chosen numeric ID outside the deterministic
-      // roster (participantCount=0 during setup, or just extra test logins), so joined can
+      // noShowCount is `noShows.length`, not `expectedCount - joinedCount` — a Cognito
+      // participant created manually outside the deterministic roster (participantCount=0
+      // during setup, or just extra test logins) still shows up in `joined`, so joined can
       // exceed expected and the subtraction would go negative.
       expectedCount: config.participantCount,
       joinedCount: joined.length,
@@ -135,17 +137,32 @@ export async function operatorRoutes(app: FastifyInstance) {
     if (!requireOperator(req, reply)) return;
     if (!GUIDE_BUCKET) return reply.send({ docs: [] });
 
-    const [active, inactive] = await Promise.all([
+    const [active, inactive, chunkCounts, reindexState] = await Promise.all([
       s3.send(new ListObjectsV2Command({ Bucket: GUIDE_BUCKET, Prefix: ACTIVE_PREFIX })),
       s3.send(new ListObjectsV2Command({ Bucket: GUIDE_BUCKET, Prefix: INACTIVE_PREFIX })),
+      countChunksBySource(),
+      getGuideReindexState(),
     ]);
-    const toDoc = (o: { Key?: string; Size?: number; LastModified?: Date }, active: boolean) => ({
-      key: o.Key!,
-      name: o.Key!.slice(o.Key!.indexOf("/") + 1),
-      sizeBytes: o.Size ?? 0,
-      active,
-      lastModified: o.LastModified?.toISOString() ?? null,
-    });
+    // See guide-index.ts: Bedrock's own per-document status API can't be trusted here, so
+    // "indexed" means "has at least one chunk in the vector store", counted directly.
+    const indexStatus = (name: string, active: boolean): string | undefined => {
+      if (!chunkCounts || !active) return undefined;
+      if (reindexState?.status === "STARTING" || reindexState?.status === "IN_PROGRESS") return "indexing";
+      if ((chunkCounts[name] ?? 0) > 0) return "indexed";
+      if (reindexState?.failedDocs?.includes(name)) return reindexState.status === "EXHAUSTED" ? "failed" : "retrying";
+      return "pending"; // uploaded, never yet part of a completed reindex
+    };
+    const toDoc = (o: { Key?: string; Size?: number; LastModified?: Date }, active: boolean) => {
+      const name = o.Key!.slice(o.Key!.indexOf("/") + 1);
+      return {
+        key: o.Key!,
+        name,
+        sizeBytes: o.Size ?? 0,
+        active,
+        lastModified: o.LastModified?.toISOString() ?? null,
+        indexStatus: indexStatus(name, active),
+      };
+    };
     const docs = [
       ...(active.Contents ?? []).filter((o) => o.Key !== ACTIVE_PREFIX).map((o) => toDoc(o, true)),
       ...(inactive.Contents ?? []).filter((o) => o.Key !== INACTIVE_PREFIX).map((o) => toDoc(o, false)),
@@ -218,22 +235,39 @@ export async function operatorRoutes(app: FastifyInstance) {
       new StartIngestionJobCommand({ knowledgeBaseId: KB_ID, dataSourceId: KB_DATA_SOURCE_ID }),
     );
     const jobId = res.ingestionJob?.ingestionJobId ?? "";
+    // A human clicking this always gets a fresh retry budget (attempt=1), even if the previous
+    // run ended EXHAUSTED — startGuideReindex resets attempt/failedDocs.
     await startGuideReindex(jobId, res.ingestionJob?.status ?? "STARTING");
     reply.send({ jobId, status: res.ingestionJob?.status ?? "STARTING" });
   });
 
   app.get("/api/operator/guide-docs/reindex-status", async (req, reply) => {
     if (!requireOperator(req, reply)) return;
-    const state = await getGuideReindexState();
+    let state = await getGuideReindexState();
     if (!state) return reply.send({ status: null });
-    if (!KB_ID || !KB_DATA_SOURCE_ID || !["STARTING", "IN_PROGRESS"].includes(state.status)) {
-      return reply.send({ status: state.status, startedAt: state.startedAt });
+
+    if (KB_ID && KB_DATA_SOURCE_ID && (state.status === "STARTING" || state.status === "IN_PROGRESS")) {
+      const res = await bedrockAgent.send(
+        new GetIngestionJobCommand({ knowledgeBaseId: KB_ID, dataSourceId: KB_DATA_SOURCE_ID, ingestionJobId: state.jobId }),
+      );
+      const jobStatus = res.ingestionJob?.status ?? state.status;
+      if (jobStatus === "COMPLETE" || jobStatus === "FAILED") {
+        // Reconcile inline rather than waiting for the next 30s background tick — an operator
+        // watching this exact screen shouldn't see a stale "인덱싱 중" for half a minute.
+        await reconcileCompletedJob(state);
+        state = await getGuideReindexState();
+      } else if (jobStatus !== state.status) {
+        await updateGuideReindexStatus(jobStatus);
+        state = { ...state, status: jobStatus };
+      }
     }
-    const res = await bedrockAgent.send(
-      new GetIngestionJobCommand({ knowledgeBaseId: KB_ID, dataSourceId: KB_DATA_SOURCE_ID, ingestionJobId: state.jobId }),
-    );
-    const status = res.ingestionJob?.status ?? state.status;
-    if (status !== state.status) await updateGuideReindexStatus(status);
-    reply.send({ status, startedAt: state.startedAt });
+    reply.send({
+      status: state!.status,
+      startedAt: state!.startedAt,
+      attempt: state!.attempt,
+      maxAttempts: 3,
+      failedDocs: state!.failedDocs ?? [],
+      nextRetryAt: state!.nextRetryAt ?? null,
+    });
   });
 }

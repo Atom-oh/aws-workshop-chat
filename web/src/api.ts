@@ -69,6 +69,11 @@ export interface GuideDoc {
   sizeBytes: number;
   active: boolean;
   lastModified: string | null;
+  // Real per-document Knowledge Base status, counted from the vector index itself — Bedrock's
+  // own document-tracking API can mark a doc "indexed" even when its write to the vector store
+  // failed, so this comes from actually counting chunks (see app/src/ai/guide-index.ts).
+  // undefined when the KB isn't enabled for this deployment (region fallback).
+  indexStatus?: "indexing" | "indexed" | "retrying" | "failed" | "pending";
 }
 
 export interface NoShow {
@@ -149,7 +154,10 @@ export const api = {
   deleteGuideDoc: (key: string) => req(`/api/operator/guide-docs?key=${encodeURIComponent(key)}`, { method: "DELETE" }),
   toggleGuideDoc: (key: string) => req(`/api/operator/guide-docs/toggle?key=${encodeURIComponent(key)}`, { method: "POST" }),
   reindexGuideDocs: () => req<{ jobId: string; status: string }>("/api/operator/guide-docs/reindex", { method: "POST" }),
-  reindexStatus: () => req<{ status: string | null; startedAt?: string }>("/api/operator/guide-docs/reindex-status"),
+  reindexStatus: () =>
+    req<{ status: string | null; startedAt?: string; attempt?: number; maxAttempts?: number; failedDocs?: string[]; nextRetryAt?: string | null }>(
+      "/api/operator/guide-docs/reindex-status",
+    ),
 };
 
 export const upload = {

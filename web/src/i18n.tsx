@@ -111,11 +111,22 @@ const DICT: Record<string, string> = {
   "아카이브 · 읽기 전용": "Archived · read-only",
   "이 채널은 아카이브되어 읽기 전용입니다.": "This channel is archived and read-only.",
   "프롬프트 주입 사용량": "Prompt-injection usage",
+  "인덱싱": "Indexing",
+  "대기중": "Pending",
+  "인덱싱 중": "Indexing…",
+  "재시도 중": "Retrying",
+  "인덱싱됨": "Indexed",
+  "인덱싱 실패": "Failed",
+  "재시도": "retry",
+  "다음 재시도": "next retry",
+  "재시도 소진": "retries exhausted",
+  "실패 문서": "failed docs",
   "업로드 실패": "upload failed",
   "프로젝터 가시성 테마 전환": "Toggle projector-visibility theme",
   "프로젝터 모드": "Projector mode",
   "다크 모드": "Dark mode",
   "로그인 링크 복사": "Copy login link",
+  "운영자 화면으로 이동": "Go to operator console",
   "참가자에게 보이지 않음": "not visible to participants",
 
   // Login
@@ -163,8 +174,8 @@ export function LocaleToggle() {
       onClick={() => setLocale(locale === "ko" ? "en" : "ko")}
       title="Language / 언어"
       style={{
-        height: 30, padding: "0 11px", border: "1px solid rgba(255,255,255,.2)", borderRadius: 999,
-        background: "transparent", color: "#fff", cursor: "pointer", fontSize: 12.5, fontWeight: 600,
+        height: 30, padding: "0 11px", border: "1px solid rgba(var(--c-w),.2)", borderRadius: 999,
+        background: "transparent", color: "var(--c-fg)", cursor: "pointer", fontSize: 12.5, fontWeight: 600,
       }}
     >
       {locale === "ko" ? "EN" : "한국어"}
