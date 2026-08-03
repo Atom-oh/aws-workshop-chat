@@ -290,6 +290,8 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
             setMessages((prev) => prev.map((m) => (m.sk === `MSG#${data.ulid}` ? { ...m, status: "resolved" } : m)));
           } else if (data.type === "deleted") {
             setMessages((prev) => prev.map((m) => (m.sk === `MSG#${data.ulid}` ? { ...m, deleted: true } : m)));
+          } else if (data.type === "threadReplyCount") {
+            setMessages((prev) => prev.map((m) => (m.sk === `MSG#${data.rootUlid}` ? { ...m, replyCount: data.replyCount } : m)));
           }
         };
         ws.onclose = () => {
@@ -338,6 +340,19 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
     await api.postMessage(ANNOUNCEMENTS_SLUG, m.body, "msg", undefined, m.media);
     setView("channel");
     setActive(ANNOUNCEMENTS_SLUG);
+  }
+
+  async function toggleUpvote(ulid: string) {
+    const { upvotes, upvoted } = await api.upvote(active, ulid);
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.sk !== `MSG#${ulid}`) return m;
+        const upvoterIds = upvoted
+          ? [...(m.upvoterIds ?? []), session.participantId]
+          : (m.upvoterIds ?? []).filter((id) => id !== session.participantId);
+        return { ...m, upvotes, upvoterIds };
+      }),
+    );
   }
 
   async function ask() {
@@ -452,9 +467,11 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
                     <div key={m.sk} onClick={() => setSelectedUlid(ulid)} style={{ cursor: "pointer", background: selectedUlid === ulid ? "rgba(255,153,0,.055)" : "transparent" }}>
                       <MessageRow m={m}>
                         <div style={{ display: "flex", gap: 12, marginTop: 6 }}>
-                          <button onClick={(e) => { e.stopPropagation(); setSelectedUlid(ulid); }} style={{ border: "none", background: "transparent", color: COLORS.orange, fontSize: 12.5, cursor: "pointer", padding: 0 }}>스레드</button>
+                          <button onClick={(e) => { e.stopPropagation(); setSelectedUlid(ulid); }} style={{ border: "none", background: "transparent", color: COLORS.orange, fontSize: 12.5, cursor: "pointer", padding: 0 }}>
+                            {m.replyCount ? `💬 ${m.replyCount}개의 댓글` : "스레드"}
+                          </button>
                           {m.kind === "question" && (
-                            <button onClick={(e) => { e.stopPropagation(); api.upvote(active, ulid); }} style={{ border: "none", background: "transparent", color: "rgba(255,255,255,.6)", fontSize: 12.5, cursor: "pointer", padding: 0 }}>👍 업보트</button>
+                            <button onClick={(e) => { e.stopPropagation(); toggleUpvote(ulid); }} style={{ border: "none", background: "transparent", color: m.upvoterIds?.includes(session.participantId) ? COLORS.orange : "rgba(255,255,255,.6)", fontSize: 12.5, cursor: "pointer", padding: 0 }}>👍 업보트</button>
                           )}
                           {m.kind === "question" && session.role === "operator" && m.status !== "resolved" && (
                             <button onClick={(e) => { e.stopPropagation(); api.resolve(active, ulid); }} style={{ border: "none", background: "transparent", color: "#FFB84D", fontSize: 12.5, cursor: "pointer", padding: 0 }}>해결로 표시</button>

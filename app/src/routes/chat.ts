@@ -83,17 +83,22 @@ export async function chatRoutes(app: FastifyInstance) {
     const slug = (req.params as any).slug;
     const labStep = await getLabStep();
 
-    const message = threadId
-      ? await postThreadReply(threadId, { channel: slug, participantId: session.participantId, body, labStep, media })
-      : await postMessage({
-          channel: slug,
-          participantId: session.participantId,
-          body,
-          kind: kind === "question" ? "question" : "msg",
-          threadId,
-          labStep,
-          media,
-        });
+    let message;
+    if (threadId) {
+      const result = await postThreadReply(threadId, { channel: slug, participantId: session.participantId, body, labStep, media });
+      message = result.message;
+      broadcast(slug, { type: "threadReplyCount", rootUlid: threadId, replyCount: result.rootReplyCount });
+    } else {
+      message = await postMessage({
+        channel: slug,
+        participantId: session.participantId,
+        body,
+        kind: kind === "question" ? "question" : "msg",
+        threadId,
+        labStep,
+        media,
+      });
+    }
 
     if (kind === "question") {
       await touchParticipant(session.participantId, "questionCount");
@@ -108,11 +113,12 @@ export async function chatRoutes(app: FastifyInstance) {
   });
 
   app.post("/api/channels/:slug/messages/:ulid/upvote", async (req, reply) => {
-    if (!requireSession(req, reply)) return;
+    const session = requireSession(req, reply);
+    if (!session) return;
     const { slug, ulid } = req.params as { slug: string; ulid: string };
-    const upvotes = await upvoteQuestion(slug, ulid);
+    const { upvotes, upvoted } = await upvoteQuestion(slug, ulid, session.participantId);
     broadcast(slug, { type: "upvote", ulid, upvotes });
-    reply.send({ upvotes });
+    reply.send({ upvotes, upvoted });
   });
 
   app.post("/api/channels/:slug/messages/:ulid/resolve", async (req, reply) => {

@@ -22,9 +22,12 @@ export default function Markdown({ text, renderMermaid = true }: { text: string;
             const codeText = String(children).replace(/\n$/, "");
             // react-markdown v9 dropped the `inline` prop, and a fenced block with no language
             // tag gets no className either — indistinguishable from inline code by className
-            // alone. LLM output reliably tags fences with a language, so this is a non-issue in
-            // practice; a stray langless fence would render as an inline chip instead of a block.
-            if (!className) return <code className="inline-code">{children}</code>;
+            // alone. A real inline code *span* can never contain a literal newline (CommonMark
+            // terminates it at line end), so multi-line content is always a block even without
+            // a language tag — falling through to the langless-inline branch otherwise rendered
+            // each wrapped line as its own background box (an inline element's background
+            // renders per visual line when it wraps).
+            if (!className && !codeText.includes("\n")) return <code className="inline-code">{children}</code>;
             if (lang === "mermaid" && renderMermaid) return <Mermaid code={codeText} />;
             return (
               <pre className="codeblock">

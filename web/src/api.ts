@@ -33,10 +33,12 @@ export interface Message {
   threadId?: string;
   labStep: string;
   upvotes: number;
+  upvoterIds?: string[];
   status?: "open" | "resolved";
   deleted: boolean;
   media: string[];
   createdAt: string;
+  replyCount?: number;
 }
 
 export interface Channel {
@@ -102,7 +104,7 @@ export const api = {
       body: JSON.stringify({ body, kind, threadId, media }),
     }),
   upvote: (slug: string, ulid: string) =>
-    req<{ upvotes: number }>(`/api/channels/${slug}/messages/${ulid}/upvote`, { method: "POST" }),
+    req<{ upvotes: number; upvoted: boolean }>(`/api/channels/${slug}/messages/${ulid}/upvote`, { method: "POST" }),
   resolve: (slug: string, ulid: string) =>
     req(`/api/channels/${slug}/messages/${ulid}/resolve`, { method: "POST" }),
   deleteMessage: (slug: string, ulid: string) =>

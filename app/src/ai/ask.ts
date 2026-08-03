@@ -105,7 +105,8 @@ async function defaultRetrieve(query: string): Promise<RetrievedPassage[]> {
   );
   return (res.retrievalResults ?? []).map((r) => ({
     text: r.content?.text ?? "",
-    source: r.location?.s3Location?.uri ?? "unknown",
+    // Filename only — the full s3:// URI leaks the guide bucket's name to end users.
+    source: r.location?.s3Location?.uri?.split("/").pop() ?? "unknown",
   }));
 }
 
@@ -269,7 +270,7 @@ async function buildPrompt(
       "knowledge instead of refusing — just don't imply an answer came from the lab guide " +
       `when it didn't. ${FORMATTING_NOTE}\n\n` +
       (passages.length ? passages.map((p, i) => `[${i + 1}] (${p.source})\n${p.text}`).join("\n\n") : "(no relevant excerpts found)");
-    return { systemPrompt, refDocs: passages.map((p) => p.source) };
+    return { systemPrompt, refDocs: [...new Set(passages.map((p) => p.source))] };
   }
   const guide = (await deps.loadGuide()).slice(0, GUIDE_INJECT_MAX_CHARS);
   const systemPrompt =

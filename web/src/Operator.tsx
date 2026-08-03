@@ -123,6 +123,9 @@ function QuestionsView({
                     <span style={{ fontSize: 11.5, color: "rgba(255,255,255,.3)", fontFamily: "ui-monospace,Menlo,monospace" }}>{timeLabel(q.createdAt)}</span>
                   </div>
                   <div style={{ fontSize: 14.5, lineHeight: 1.55, color: "rgba(255,255,255,.94)" }}><Markdown text={q.body} /></div>
+                  {!!q.replyCount && (
+                    <div style={{ marginTop: 6, fontSize: 12, color: COLORS.orange }}>💬 {q.replyCount}개의 댓글</div>
+                  )}
                 </div>
                 <div style={{ flex: "none", display: "flex", alignItems: "flex-start", gap: 6 }}>
                   {isOpen && (
@@ -212,7 +215,7 @@ function ThreadPanel({ channel, ulid, message, onClose, width, onResize }: {
 
 // ---------- Channel view ----------
 
-function ChannelView({ slug, name }: { slug: string; name: string }) {
+function ChannelView({ slug, name, onOpenThread }: { slug: string; name: string; onOpenThread: (m: Message) => void }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
   const wsRef = useRef<WebSocket | null>(null);
@@ -225,6 +228,7 @@ function ChannelView({ slug, name }: { slug: string; name: string }) {
       const data = JSON.parse(evt.data);
       if (data.type === "message" && !data.message.threadId) setMessages((prev) => [...prev, data.message]);
       else if (data.type === "deleted") setMessages((prev) => prev.map((m) => (m.sk === `MSG#${data.ulid}` ? { ...m, deleted: true } : m)));
+      else if (data.type === "threadReplyCount") setMessages((prev) => prev.map((m) => (m.sk === `MSG#${data.rootUlid}` ? { ...m, replyCount: data.replyCount } : m)));
     };
     wsRef.current = ws;
     return () => ws.close();
@@ -254,6 +258,12 @@ function ChannelView({ slug, name }: { slug: string; name: string }) {
                 <span style={{ fontSize: 11, color: "rgba(255,255,255,.3)", fontFamily: "ui-monospace,Menlo,monospace" }}>{timeLabel(m.createdAt)}</span>
               </div>
               <div style={{ fontSize: 14, lineHeight: 1.6, color: "rgba(255,255,255,.9)" }}><Markdown text={m.body} /></div>
+              <button
+                onClick={() => onOpenThread(m)}
+                style={{ border: "none", background: "transparent", color: COLORS.orange, fontSize: 12.5, cursor: "pointer", padding: "4px 0 0", font: "inherit" }}
+              >
+                {m.replyCount ? `💬 ${m.replyCount}개의 댓글` : "스레드"}
+              </button>
             </div>
           </div>
         ))}
@@ -445,6 +455,7 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [view, setView] = useState<View>("questions");
   const [activeChannel, setActiveChannel] = useState<string>("");
+  const [channelThread, setChannelThread] = useState<Message | null>(null);
   const [questions, setQuestions] = useState<Message[]>([]);
   const [filter, setFilter] = useState<"open" | "all" | "top">("open");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -597,7 +608,7 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
                   key={slug}
                   icon="#" iconColor="rgba(255,255,255,.35)" label={c.name}
                   active={view === "channel" && activeChannel === slug}
-                  onClick={() => { setView("channel"); setActiveChannel(slug); }}
+                  onClick={() => { setView("channel"); setActiveChannel(slug); setChannelThread(null); }}
                 />
               );
             })}
@@ -630,7 +641,7 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
               onDelete={(q) => api.deleteMessage(q.channel, q.sk.replace("MSG#", "")).then(() => { loadQuestions(channels); showToast("메시지를 삭제했습니다"); })}
             />
           )}
-          {view === "channel" && activeChannel && <ChannelView slug={activeChannel} name={channelName(activeChannel)} />}
+          {view === "channel" && activeChannel && <ChannelView slug={activeChannel} name={channelName(activeChannel)} onOpenThread={setChannelThread} />}
           {view === "ai" && <AiLogView queries={aiQueries} />}
           {view === "docs" && (
             <DocsView
@@ -650,6 +661,9 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
 
         {selected && view === "questions" && (
           <ThreadPanel channel={selected.channel} ulid={selected.sk.replace("MSG#", "")} message={selected} onClose={() => setSelectedId(null)} width={threadWidth} onResize={resizeThread} />
+        )}
+        {channelThread && view === "channel" && (
+          <ThreadPanel channel={channelThread.channel} ulid={channelThread.sk.replace("MSG#", "")} message={channelThread} onClose={() => setChannelThread(null)} width={threadWidth} onResize={resizeThread} />
         )}
       </div>
 

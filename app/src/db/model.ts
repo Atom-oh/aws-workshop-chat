@@ -17,10 +17,12 @@ export interface MessageItem {
   threadId?: string;
   labStep: string;
   upvotes: number;
+  upvoterIds?: string[]; // who has upvoted, so a second click toggles the upvote off
   status?: QuestionStatus;
   deleted: boolean;
   media: string[];
   createdAt: string; // ISO, derived from ulid at write time for convenience
+  replyCount?: number; // denormalized count of thread replies, bumped in postThreadReply
 }
 
 export interface ParticipantItem {

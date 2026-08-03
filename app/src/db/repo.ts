@@ -131,6 +131,7 @@ export async function postMessage(input: {
     deleted: false,
     media: input.media ?? [],
     createdAt: isoFromUlid(id),
+    replyCount: 0,
   };
   await ddb.send(new PutCommand({ TableName: TABLE_NAME, Item: item }));
 
@@ -159,7 +160,7 @@ export async function postThreadReply(rootUlid: string, input: {
   body: string;
   labStep: string;
   media?: string[];
-}) {
+}): Promise<{ message: MessageItem; rootReplyCount: number }> {
   const id = ulid();
   const k = keys.threadReply(rootUlid, id);
   const item: MessageItem = {
@@ -176,7 +177,21 @@ export async function postThreadReply(rootUlid: string, input: {
     createdAt: isoFromUlid(id),
   };
   await ddb.send(new PutCommand({ TableName: TABLE_NAME, Item: item }));
-  return item;
+
+  // Denormalized onto the root message so the channel/board views can show "N개의 댓글"
+  // without an N+1 query per row.
+  const res = await ddb.send(
+    new UpdateCommand({
+      TableName: TABLE_NAME,
+      Key: keys.message(input.channel, rootUlid),
+      UpdateExpression: "ADD replyCount :one",
+      ExpressionAttributeValues: { ":one": 1 },
+      ReturnValues: "UPDATED_NEW",
+    }),
+  );
+  const rootReplyCount = (res.Attributes?.replyCount as number) ?? 1;
+
+  return { message: item, rootReplyCount };
 }
 
 export async function listMessages(channel: string, opts: { limit?: number; after?: string } = {}) {
@@ -216,26 +231,31 @@ export async function listThreadReplies(rootUlid: string) {
   return res.Items ?? [];
 }
 
-export async function upvoteQuestion(channel: string, messageUlid: string) {
+export async function upvoteQuestion(channel: string, messageUlid: string, participantId: string) {
   // read-modify-write on both the message and its status-index projection: the index's SK
   // embeds the upvote count so it must be rewritten, not just ADD-ed, when it moves buckets.
   const msgKey = keys.message(channel, messageUlid);
   const cur = await ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: msgKey }));
   if (!cur.Item) throw new Error("message not found");
-  const newUpvotes = (cur.Item.upvotes ?? 0) + 1;
+  const upvoterIds: string[] = cur.Item.upvoterIds ?? [];
+  const alreadyUpvoted = upvoterIds.includes(participantId);
+  const nextUpvoterIds = alreadyUpvoted
+    ? upvoterIds.filter((id) => id !== participantId)
+    : [...upvoterIds, participantId];
+  const newUpvotes = nextUpvoterIds.length;
   const status: QuestionStatus = cur.Item.status ?? "open";
 
   await ddb.send(
     new UpdateCommand({
       TableName: TABLE_NAME,
       Key: msgKey,
-      UpdateExpression: "SET upvotes = :v",
-      ExpressionAttributeValues: { ":v": newUpvotes },
+      UpdateExpression: "SET upvotes = :v, upvoterIds = :ids",
+      ExpressionAttributeValues: { ":v": newUpvotes, ":ids": nextUpvoterIds },
     }),
   );
 
   // delete old index item, write new one at the new upvote bucket
-  const oldKey = keys.questionIndex(status, newUpvotes - 1, messageUlid);
+  const oldKey = keys.questionIndex(status, cur.Item.upvotes ?? 0, messageUlid);
   const newKey = keys.questionIndex(status, newUpvotes, messageUlid);
   await ddb.send(
     new PutCommand({
@@ -252,7 +272,7 @@ export async function upvoteQuestion(channel: string, messageUlid: string) {
       }),
     );
   }
-  return newUpvotes;
+  return { upvotes: newUpvotes, upvoted: !alreadyUpvoted };
 }
 
 export async function resolveQuestion(channel: string, messageUlid: string, responder: string) {
