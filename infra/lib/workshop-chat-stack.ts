@@ -180,7 +180,10 @@ export class WorkshopChatStack extends Stack {
         // document "indexed" even when its write to S3 Vectors actually failed. Wildcard for the
         // same reason as the bedrock:* grant above: the vector bucket/index now live in a
         // separate cross-region stack (bedrock-stack.ts) and their ARNs aren't available here.
-        actions: ["s3vectors:ListVectors"],
+        // ListVectors with returnMetadata:true (as used here) requires GetVectors, not just
+        // ListVectors — confirmed live via a 403 AccessDeniedException naming GetVectors even
+        // though the SDK call is ListVectorsCommand.
+        actions: ["s3vectors:ListVectors", "s3vectors:GetVectors"],
         resources: ["*"],
       }),
     );
