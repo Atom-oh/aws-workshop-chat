@@ -31,7 +31,7 @@ export default function Composer({
     const el = ref.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, 320)}px`;
   }, [value]);
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -46,48 +46,45 @@ export default function Composer({
       {extra}
       <textarea
         ref={ref}
-        rows={1}
+        rows={3}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={onKeyDown}
         onPaste={onPaste}
-        placeholder={placeholder}
+        placeholder={`${placeholder} — ${t("Enter로 보내기 · Shift+Enter로 줄바꿈 · `code` · ```코드블록```")}`}
         style={{
           width: "100%", border: "none", outline: "none", resize: "none", background: "transparent",
-          color: COLORS.text, font: "400 13.5px/1.5 inherit", padding: 0,
+          color: COLORS.text, font: "400 13.5px/1.5 inherit", padding: 0, minHeight: 64,
         }}
       />
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
-        <span style={{ fontSize: 11.5, color: COLORS.fg3 }}>{t("Enter로 보내기 · Shift+Enter로 줄바꿈 · `code` · ```코드블록```")}</span>
-        <div style={{ display: "flex", gap: 8 }}>
-          {onAttachFiles && (
-            <>
-              <input
-                ref={fileRef}
-                type="file"
-                multiple
-                style={{ display: "none" }}
-                onChange={(e) => {
-                  if (e.target.files?.length) onAttachFiles(e.target.files);
-                  e.target.value = "";
-                }}
-              />
-              <button
-                onClick={() => fileRef.current?.click()}
-                title={t("파일 첨부")}
-                style={{ height: 30, width: 30, border: `1px solid ${COLORS.lineStrong}`, borderRadius: 999, background: "transparent", color: COLORS.fg2, cursor: "pointer", fontSize: 14 }}
-              >
-                📎
-              </button>
-            </>
-          )}
-          <button
-            onClick={onSend}
-            style={{ height: 30, padding: "0 14px", border: 0, borderRadius: 999, background: COLORS.orange, color: COLORS.onAccent, font: "700 12.5px/1 inherit", cursor: "pointer" }}
-          >
-            {t("보내기")}
-          </button>
-        </div>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
+        {onAttachFiles && (
+          <>
+            <input
+              ref={fileRef}
+              type="file"
+              multiple
+              style={{ display: "none" }}
+              onChange={(e) => {
+                if (e.target.files?.length) onAttachFiles(e.target.files);
+                e.target.value = "";
+              }}
+            />
+            <button
+              onClick={() => fileRef.current?.click()}
+              title={t("파일 첨부")}
+              style={{ height: 30, width: 30, border: `1px solid ${COLORS.lineStrong}`, borderRadius: 999, background: "transparent", color: COLORS.fg2, cursor: "pointer", fontSize: 14 }}
+            >
+              📎
+            </button>
+          </>
+        )}
+        <button
+          onClick={onSend}
+          style={{ height: 30, padding: "0 14px", border: 0, borderRadius: 999, background: COLORS.orange, color: COLORS.onAccent, font: "700 12.5px/1 inherit", cursor: "pointer" }}
+        >
+          {t("보내기")}
+        </button>
       </div>
     </div>
   );
