@@ -30,7 +30,10 @@ function buildJoinUrl(req: any, participantId: string, role: "participant" | "op
   return `${origin}/j?t=${encodeURIComponent(token)}`;
 }
 
-const s3 = new S3Client({});
+// GUIDE_BUCKET can live in a different region than this task when a Bedrock Knowledge Base is
+// enabled (the KB's S3 data source must be co-located with the KB — see infra/lib/bedrock-stack.ts)
+// — explicit region avoids a PermanentRedirect from the SDK defaulting to this task's own region.
+const s3 = new S3Client({ region: process.env.GUIDE_BUCKET_REGION });
 const bedrockAgent = new BedrockAgentClient({ region: process.env.BEDROCK_REGION });
 const GUIDE_BUCKET = process.env.GUIDE_BUCKET;
 const KB_ID = process.env.BEDROCK_KB_ID;
