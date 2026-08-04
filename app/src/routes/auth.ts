@@ -34,10 +34,13 @@ export async function authRoutes(app: FastifyInstance) {
   // used to create the Cognito user, so no typing is ever required.
   app.get("/j", async (req, reply) => {
     const t = (req.query as any)?.t as string | undefined;
-    if (!t) return reply.code(400).send({ error: "missing token" });
+    // This is the primary entry point for most participants — a raw JSON 403 here is a dead
+    // end with no way back in. Redirect to the login screen with an error flag it knows to
+    // render as a friendly "link expired, log in with ID/password instead" notice.
+    if (!t) return reply.redirect("/?error=expired_link");
 
     const payload = verifyToken(decodeURIComponent(t), config.sessionSecret);
-    if (!payload) return reply.code(403).send({ error: "invalid or expired join link" });
+    if (!payload) return reply.redirect("/?error=expired_link");
 
     // Operator links must not touch onLoginSuccess — it creates a participant DB record and a
     // login timeline event, which would falsely count the operator as a participant in

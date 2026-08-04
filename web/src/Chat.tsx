@@ -88,9 +88,9 @@ function MessageRow({ m, children }: { m: Message; children?: React.ReactNode })
   );
 }
 
-function ThreadPanel({ slug, message, onClose, width, onResize, initialMsgUlid, onCopyLink }: {
+function ThreadPanel({ slug, message, onClose, width, onResize, initialMsgUlid, onCopyLink, onError }: {
   slug: string; message: Message; onClose: () => void; width: number; onResize: (deltaX: number) => void;
-  initialMsgUlid?: string | null; onCopyLink: (ulid: string) => void;
+  initialMsgUlid?: string | null; onCopyLink: (ulid: string) => void; onError: (message: string) => void;
 }) {
   const { locale, t } = useLocale();
   const rootUlid = message.sk.replace("MSG#", "");
@@ -107,10 +107,14 @@ function ThreadPanel({ slug, message, onClose, width, onResize, initialMsgUlid, 
 
   async function send() {
     if (!draft.trim() && attachments.length === 0) return;
-    await api.postMessage(slug, draft, "msg", rootUlid, attachments.map((a) => a.key));
-    setDraft("");
-    setAttachments([]);
-    load();
+    try {
+      await api.postMessage(slug, draft, "msg", rootUlid, attachments.map((a) => a.key));
+      setDraft("");
+      setAttachments([]);
+      load();
+    } catch (err: any) {
+      onError(err.message);
+    }
   }
 
   return (
@@ -375,10 +379,14 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
   async function send() {
     if (!draft.trim() && attachments.length === 0) return;
     const isQuestions = active === "questions";
-    await api.postMessage(active, draft, isQuestions && asQuestion ? "question" : "msg", undefined, attachments.map((a) => a.key));
-    setDraft("");
-    setAttachments([]);
-    setMessages((await api.messages(active)).messages);
+    try {
+      await api.postMessage(active, draft, isQuestions && asQuestion ? "question" : "msg", undefined, attachments.map((a) => a.key));
+      setDraft("");
+      setAttachments([]);
+      setMessages((await api.messages(active)).messages);
+    } catch (err: any) {
+      showToast(err.message);
+    }
   }
 
   async function attachFiles(files: FileList) {
@@ -402,16 +410,20 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
   }
 
   async function toggleUpvote(ulid: string) {
-    const { upvotes, upvoted } = await api.upvote(active, ulid);
-    setMessages((prev) =>
-      prev.map((m) => {
-        if (m.sk !== `MSG#${ulid}`) return m;
-        const upvoterIds = upvoted
-          ? [...(m.upvoterIds ?? []), session.participantId]
-          : (m.upvoterIds ?? []).filter((id) => id !== session.participantId);
-        return { ...m, upvotes, upvoterIds };
-      }),
-    );
+    try {
+      const { upvotes, upvoted } = await api.upvote(active, ulid);
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.sk !== `MSG#${ulid}`) return m;
+          const upvoterIds = upvoted
+            ? [...(m.upvoterIds ?? []), session.participantId]
+            : (m.upvoterIds ?? []).filter((id) => id !== session.participantId);
+          return { ...m, upvotes, upvoterIds };
+        }),
+      );
+    } catch (err: any) {
+      showToast(err.message);
+    }
   }
 
   async function ask() {
@@ -567,21 +579,29 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
                 })}
               </div>
               <div style={{ flex: "none", padding: "12px 20px 16px" }}>
-                {active === "questions" && (
-                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: COLORS.dim, marginBottom: 8 }}>
-                    <input type="checkbox" checked={asQuestion} onChange={(e) => setAsQuestion(e.target.checked)} style={{ width: "auto" }} />
-                    {t("질문으로 등록")}
-                  </label>
+                {active === ANNOUNCEMENTS_SLUG && session.role !== "operator" ? (
+                  <div style={{ padding: "10px 12px", borderRadius: 10, background: COLORS.fill, color: COLORS.fg3, fontSize: 12.5, textAlign: "center" }}>
+                    {t("이 채널은 운영자만 글을 올릴 수 있습니다.")}
+                  </div>
+                ) : (
+                  <>
+                    {active === "questions" && (
+                      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: COLORS.dim, marginBottom: 8 }}>
+                        <input type="checkbox" checked={asQuestion} onChange={(e) => setAsQuestion(e.target.checked)} style={{ width: "auto" }} />
+                        {t("질문으로 등록")}
+                      </label>
+                    )}
+                    <Composer
+                      value={draft}
+                      onChange={setDraft}
+                      onSend={send}
+                      onPaste={onPaste}
+                      onAttachFiles={attachFiles}
+                      placeholder={t("메시지 입력 (붙여넣기 또는 📎로 파일 첨부)")}
+                      extra={attachments.length > 0 && <AttachmentChips attachments={attachments} onRemove={(key) => setAttachments((a) => a.filter((x) => x.key !== key))} />}
+                    />
+                  </>
                 )}
-                <Composer
-                  value={draft}
-                  onChange={setDraft}
-                  onSend={send}
-                  onPaste={onPaste}
-                  onAttachFiles={attachFiles}
-                  placeholder={t("메시지 입력 (붙여넣기 또는 📎로 파일 첨부)")}
-                  extra={attachments.length > 0 && <AttachmentChips attachments={attachments} onRemove={(key) => setAttachments((a) => a.filter((x) => x.key !== key))} />}
-                />
               </div>
             </>
           )}
@@ -595,6 +615,7 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
             slug={active} message={selected} onClose={() => setSelectedUlid(null)} width={threadWidth} onResize={resizeThread}
             initialMsgUlid={initialMsgUlid}
             onCopyLink={(ulid) => copyLink(buildMessageLink({ channel: active, thread: selectedUlid ?? undefined, msg: ulid }))}
+            onError={showToast}
           />
         )}
       </div>

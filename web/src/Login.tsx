@@ -13,6 +13,10 @@ export default function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Set by a redirect from GET /j when the one-click join link is missing/expired/tampered —
+  // that's the primary entry point for most participants, so landing here needs to read as
+  // "use ID/password instead", not a dead end.
+  const expiredLink = new URLSearchParams(window.location.search).get("error") === "expired_link";
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -45,6 +49,11 @@ export default function Login({ onLoggedIn }: { onLoggedIn: () => void }) {
         <p style={{ fontSize: 12.5, color: COLORS.dim, lineHeight: 1.5, marginBottom: 16 }}>
           {t("참가자 간에는 익명입니다. 운영자는 참가자에게 발급된 참가자 ID를 확인할 수 있습니다.")}
         </p>
+        {expiredLink && (
+          <p style={{ padding: "10px 12px", borderRadius: 8, background: "rgba(var(--c-danger-rgb),.14)", border: "1px solid rgba(var(--c-danger-rgb),.35)", color: COLORS.redText, fontSize: 12.5, lineHeight: 1.5, marginBottom: 16 }}>
+            {t("조인 링크가 만료되었거나 올바르지 않습니다. 아래 ID/비밀번호로 로그인해 주세요.")}
+          </p>
+        )}
         <form onSubmit={submit}>
           <div style={{ marginBottom: 12 }}>
             <label style={labelStyle}>{t("ID (참가자 ID 또는 운영자 아이디)")}</label>

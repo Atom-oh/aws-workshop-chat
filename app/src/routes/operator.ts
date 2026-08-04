@@ -126,12 +126,6 @@ export async function operatorRoutes(app: FastifyInstance) {
     });
   });
 
-  app.post("/api/operator/attendance/:participantId/resend", async (req, reply) => {
-    if (!requireOperator(req, reply)) return;
-    const { participantId } = req.params as { participantId: string };
-    reply.send({ joinUrl: buildJoinUrl(req, participantId) });
-  });
-
   // ---------- Guide documents (Bedrock Knowledge Base / prompt-injection fallback source) ----------
   app.get("/api/operator/guide-docs", async (req, reply) => {
     if (!requireOperator(req, reply)) return;

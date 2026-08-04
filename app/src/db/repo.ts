@@ -231,6 +231,11 @@ export async function listThreadReplies(rootUlid: string) {
   return res.Items ?? [];
 }
 
+export async function getMessage(channel: string, messageUlid: string): Promise<MessageItem | undefined> {
+  const res = await ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: keys.message(channel, messageUlid) }));
+  return res.Item as MessageItem | undefined;
+}
+
 export async function upvoteQuestion(channel: string, messageUlid: string, participantId: string) {
   // read-modify-write on both the message and its status-index projection: the index's SK
   // embeds the upvote count so it must be rewritten, not just ADD-ed, when it moves buckets.

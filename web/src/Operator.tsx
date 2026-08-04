@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, wsUrl, type AiQuery, type Attendance, type Channel, type GuideDoc, type Message, type NoShow } from "./api";
+import { api, wsUrl, type AiQuery, type Attendance, type Channel, type GuideDoc, type Message, type NoShow, type Participant } from "./api";
 import { avatarColor, avatarInitials, displayName } from "./format";
 import Markdown from "./Markdown";
 import { COLORS } from "./theme";
@@ -17,7 +17,7 @@ const GUIDE_CONTEXT_CAP_BYTES = 60_000;
 
 type Theme = "midnight" | "projector";
 
-type View = "questions" | "channel" | "ai" | "docs" | "attendance";
+type View = "questions" | "channel" | "ai" | "docs" | "attendance" | "roster";
 
 function timeLabel(iso: string, locale: "ko" | "en" = "ko") {
   return new Date(iso).toLocaleTimeString(locale === "en" ? "en-US" : "ko-KR", { hour: "2-digit", minute: "2-digit" });
@@ -609,10 +609,78 @@ function AttendanceView({ attendance, onResend }: { attendance: Attendance | nul
             <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, color: COLORS.redText }}>
               <span style={{ width: 6, height: 6, borderRadius: "50%", background: COLORS.redText }} />{t("미입장")}
             </div>
-            <div><button onClick={() => onResend(n)} className="hover-accent-border" style={{ height: 26, padding: "0 11px", border: "1px solid rgba(var(--c-w),.18)", borderRadius: 999, background: "transparent", color: COLORS.fg2, font: "500 11.5px/1 inherit", cursor: "pointer" }}>{t("링크 재전송")}</button></div>
+            <div><button onClick={() => onResend(n)} className="hover-accent-border" style={{ height: 26, padding: "0 11px", border: "1px solid rgba(var(--c-w),.18)", borderRadius: 999, background: "transparent", color: COLORS.fg2, font: "500 11.5px/1 inherit", cursor: "pointer" }}>{t("링크 복사")}</button></div>
           </div>
         ))}
         {attendance.noShows.length === 0 && <div style={{ padding: "16px 4px", color: COLORS.dim, fontSize: 13 }}>{t("모든 참가자가 입장했습니다.")}</div>}
+      </div>
+    </div>
+  );
+}
+
+function RosterView({ roster, participants, onCopyLink, onBlock, onUnblock }: {
+  roster: { participantId: string; joinUrl: string }[];
+  participants: Participant[];
+  onCopyLink: (url: string) => void;
+  onBlock: (id: string) => void;
+  onUnblock: (id: string) => void;
+}) {
+  const { t } = useLocale();
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, overflowY: "auto" }}>
+      <div style={{ flex: "none", padding: "16px 20px 14px", borderBottom: `1px solid ${COLORS.border}` }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+          <div>
+            <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>{t("로스터 · 조인 링크")}</div>
+            <div style={{ fontSize: 12.5, color: COLORS.dim }}>{t("참가자에게 배포할 조인 링크입니다. QR을 인쇄하거나 CSV로 내려받을 수 있습니다.")}</div>
+          </div>
+          <a href="/api/operator/roster.csv" className="hover-accent-border" style={{ height: 30, padding: "0 14px", display: "flex", alignItems: "center", border: "1px solid rgba(var(--c-w),.18)", borderRadius: 999, color: COLORS.fg2, fontSize: 12.5, fontWeight: 600, textDecoration: "none", flexShrink: 0 }}>
+            {t("CSV 다운로드")}
+          </a>
+        </div>
+      </div>
+      <div style={{ padding: "0 20px 8px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "150px 1fr 80px 90px", gap: "0 14px", padding: "11px 4px", fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "rgba(var(--c-w),.35)", borderBottom: `1px solid ${COLORS.border}`, marginTop: 8 }}>
+          <div>{t("참가자 ID")}</div><div>{t("조인 링크")}</div><div></div><div></div>
+        </div>
+        {roster.map((r, i) => (
+          <div key={r.participantId} className="hover-row" style={{ display: "grid", gridTemplateColumns: "150px 1fr 80px 90px", gap: "0 14px", alignItems: "center", padding: "11px 4px", borderBottom: "1px solid rgba(var(--c-w),.055)", fontSize: 13.5 }}>
+            <div style={{ fontFamily: "ui-monospace,Menlo,monospace", fontSize: 12.5, color: COLORS.fg2 }}>{r.participantId}</div>
+            <div style={{ fontSize: 12, color: COLORS.dim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.joinUrl}</div>
+            <a href={`/api/operator/roster/${i}/qr.png`} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: COLORS.fg2, textDecoration: "none" }}>{t("QR 보기")}</a>
+            <button onClick={() => onCopyLink(r.joinUrl)} className="hover-accent-border" style={{ height: 26, padding: "0 11px", border: "1px solid rgba(var(--c-w),.18)", borderRadius: 999, background: "transparent", color: COLORS.fg2, font: "500 11.5px/1 inherit", cursor: "pointer" }}>{t("복사")}</button>
+          </div>
+        ))}
+        {roster.length === 0 && <div style={{ padding: "16px 4px", color: COLORS.dim, fontSize: 13 }}>{t("생성된 로스터가 없습니다 (participantCount=0).")}</div>}
+      </div>
+
+      <div style={{ flex: "none", padding: "20px 20px 14px", borderTop: `1px solid ${COLORS.border}`, borderBottom: `1px solid ${COLORS.border}` }}>
+        <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>{t("참가자 관리 · 차단")}</div>
+        <div style={{ fontSize: 12.5, color: COLORS.dim }}>{t("입장한 참가자만 표시됩니다. 차단된 참가자는 메시지를 보낼 수 없습니다.")}</div>
+      </div>
+      <div style={{ padding: "0 20px 24px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "150px 90px 90px 1fr 90px", gap: "0 14px", padding: "11px 4px", fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "rgba(var(--c-w),.35)", borderBottom: `1px solid ${COLORS.border}`, marginTop: 8 }}>
+          <div>{t("참가자 ID")}</div><div>{t("질문")}</div><div>{t("AI 질문")}</div><div>{t("상태")}</div><div></div>
+        </div>
+        {participants.map((p) => (
+          <div key={p.participantId} className="hover-row" style={{ display: "grid", gridTemplateColumns: "150px 90px 90px 1fr 90px", gap: "0 14px", alignItems: "center", padding: "11px 4px", borderBottom: "1px solid rgba(var(--c-w),.055)", fontSize: 13.5 }}>
+            <div style={{ fontFamily: "ui-monospace,Menlo,monospace", fontSize: 12.5, color: COLORS.fg2 }}>{p.participantId}</div>
+            <div style={{ fontSize: 12.5, color: COLORS.dim }}>{p.questionCount}</div>
+            <div style={{ fontSize: 12.5, color: COLORS.dim }}>{p.aiQueryCount}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, color: p.blocked ? COLORS.redText : COLORS.tealText }}>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: p.blocked ? COLORS.redText : COLORS.tealText }} />
+              {p.blocked ? t("차단됨") : t("활동중")}
+            </div>
+            <div>
+              {p.blocked ? (
+                <button onClick={() => onUnblock(p.participantId)} className="hover-accent-border" style={{ height: 26, padding: "0 11px", border: "1px solid rgba(var(--c-w),.18)", borderRadius: 999, background: "transparent", color: COLORS.fg2, font: "500 11.5px/1 inherit", cursor: "pointer" }}>{t("차단 해제")}</button>
+              ) : (
+                <button onClick={() => onBlock(p.participantId)} className="hover-danger" style={{ height: 26, padding: "0 11px", border: "1px solid rgba(var(--c-w),.18)", borderRadius: 999, background: "transparent", color: COLORS.fg2, font: "500 11.5px/1 inherit", cursor: "pointer" }}>{t("차단")}</button>
+              )}
+            </div>
+          </div>
+        ))}
+        {participants.length === 0 && <div style={{ padding: "16px 4px", color: COLORS.dim, fontSize: 13 }}>{t("아직 입장한 참가자가 없습니다.")}</div>}
       </div>
     </div>
   );
@@ -636,7 +704,7 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
 
   const initialParams = useMemo(readParams, []);
   const initialView = initialParams.get("view") as View | null;
-  const VALID_VIEWS: View[] = ["questions", "channel", "ai", "docs", "attendance"];
+  const VALID_VIEWS: View[] = ["questions", "channel", "ai", "docs", "attendance", "roster"];
   const initialThreadUlid = initialParams.get("thread");
   const initialMsgUlid = initialParams.get("msg");
 
@@ -654,6 +722,8 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
     status: string | null; startedAt?: string; attempt?: number; maxAttempts?: number; failedDocs?: string[]; nextRetryAt?: string | null;
   }>({ status: null });
   const [attendance, setAttendance] = useState<Attendance | null>(null);
+  const [roster, setRoster] = useState<{ participantId: string; joinUrl: string }[]>([]);
+  const [participants, setParticipants] = useState<Participant[]>([]);
   const [lastExport, setLastExport] = useState<string | null>(null);
   const [exportRowCounts, setExportRowCounts] = useState<Record<string, number> | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -688,10 +758,12 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
     }
   }
 
-  async function loadQuestions(chans: Channel[]) {
-    const perChannel = await Promise.all(chans.map((c) => api.messages(c.pk.replace("CHANNEL#", ""))));
-    const all = perChannel.flatMap((r) => r.messages);
-    setQuestions(all.filter((m) => m.kind === "question" && !m.deleted));
+  async function loadQuestions() {
+    // Dedicated GSI-backed endpoint, not a per-channel messages() scan (which caps at 100 and
+    // silently drops older open questions once a busy channel outgrows that page) — see
+    // GET /api/questions in chat.ts.
+    const [open, resolved] = await Promise.all([api.questions("open"), api.questions("resolved")]);
+    setQuestions([...open.questions, ...resolved.questions]);
   }
 
   async function refresh() {
@@ -700,7 +772,7 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
     setChannels(chans.channels);
     setLastExport(exportStatus.lastExportAt);
     setExportRowCounts(exportStatus.rowCounts);
-    await loadQuestions(chans.channels);
+    await loadQuestions();
   }
 
   useEffect(() => {
@@ -713,6 +785,10 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
   useEffect(() => {
     if (view === "ai") api.aiQueries().then((r) => setAiQueries(r.queries));
     if (view === "attendance") api.attendance().then(setAttendance);
+    if (view === "roster") {
+      api.roster().then((r) => setRoster(r.roster));
+      api.participants().then((r) => setParticipants(r.participants));
+    }
   }, [view]);
 
   // Docs view polls on its own short interval (not just on entry) — indexing status changes in
@@ -876,6 +952,7 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
             <NavItem icon="✳" iconColor={COLORS.teal} label={t("AI 도우미 로그")} count={aiQueries.length || undefined} active={view === "ai"} onClick={() => setView("ai")} />
             <NavItem icon="▤" iconColor="rgba(var(--c-w),.5)" label={t("랩 가이드 문서")} badge={t("운영자 전용")} active={view === "docs"} onClick={() => setView("docs")} />
             <NavItem icon="◎" iconColor="rgba(var(--c-w),.5)" label={t("참여 현황")} active={view === "attendance"} onClick={() => setView("attendance")} />
+            <NavItem icon="☰" iconColor="rgba(var(--c-w),.5)" label={t("로스터 · 참가자 관리")} active={view === "roster"} onClick={() => setView("roster")} />
           </div>
 
           <div style={{ flex: 1 }} />
@@ -892,9 +969,9 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
           {view === "questions" && (
             <QuestionsView
               questions={questions} filter={filter} setFilter={setFilter} selectedId={selectedId} setSelectedId={setSelectedId}
-              onUpvote={(q) => api.upvote(q.channel, q.sk.replace("MSG#", "")).then(() => loadQuestions(channels))}
-              onResolve={(q) => api.resolve(q.channel, q.sk.replace("MSG#", "")).then(() => { loadQuestions(channels); showToast(t("해결로 표시했습니다")); })}
-              onDelete={(q) => api.deleteMessage(q.channel, q.sk.replace("MSG#", "")).then(() => { loadQuestions(channels); showToast(t("메시지를 삭제했습니다")); })}
+              onUpvote={(q) => api.upvote(q.channel, q.sk.replace("MSG#", "")).then(() => loadQuestions())}
+              onResolve={(q) => api.resolve(q.channel, q.sk.replace("MSG#", "")).then(() => { loadQuestions(); showToast(t("해결로 표시했습니다")); })}
+              onDelete={(q) => api.deleteMessage(q.channel, q.sk.replace("MSG#", "")).then(() => { loadQuestions(); showToast(t("메시지를 삭제했습니다")); })}
               highlighted={questionsHighlighted}
               onCopyLink={(ulid) => copyLink(buildMessageLink({ view: "questions", thread: ulid }))}
             />
@@ -918,7 +995,16 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
           {view === "attendance" && (
             <AttendanceView
               attendance={attendance}
-              onResend={(n) => api.resendJoinLink(n.participantId).then(() => showToast(`${n.participantId} ${t("조인 링크를 재전송했습니다")}`))}
+              onResend={(n) => copyLink(n.joinUrl)}
+            />
+          )}
+          {view === "roster" && (
+            <RosterView
+              roster={roster}
+              participants={participants}
+              onCopyLink={copyLink}
+              onBlock={(id) => api.block(id).then(() => api.participants().then((r) => { setParticipants(r.participants); showToast(t("참가자를 차단했습니다")); }))}
+              onUnblock={(id) => api.unblock(id).then(() => api.participants().then((r) => { setParticipants(r.participants); showToast(t("차단을 해제했습니다")); }))}
             />
           )}
         </div>

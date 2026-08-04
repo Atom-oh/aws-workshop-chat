@@ -13,6 +13,7 @@ import {
   upvoteQuestion,
   resolveQuestion,
   listQuestionsByStatus,
+  getMessage,
   softDeleteMessage,
   getParticipant,
   touchParticipant,
@@ -141,7 +142,14 @@ export async function chatRoutes(app: FastifyInstance) {
   app.get("/api/questions", async (req, reply) => {
     if (!requireSession(req, reply)) return;
     const status = ((req.query as any)?.status ?? "open") as "open" | "resolved";
-    reply.send({ questions: await listQuestionsByStatus(status) });
+    // The QSTATUS shadow item only carries messageId/channel/body — hydrate the full message
+    // (author, upvotes, media, replyCount) via the base table's own PK, same as any other
+    // channel read. Unlike GET /api/channels/:slug/messages this has no 100-item cap: it comes
+    // from listQuestionsByStatus's unbounded queryAll, so old open questions can't scroll out of
+    // the operator's board just because their channel has since grown past 100 messages.
+    const shadows = await listQuestionsByStatus(status);
+    const hydrated = await Promise.all(shadows.map((s: any) => getMessage(s.channel, s.messageId)));
+    reply.send({ questions: hydrated.filter((m) => m && !m.deleted) });
   });
 
   app.delete("/api/channels/:slug/messages/:ulid", async (req, reply) => {
