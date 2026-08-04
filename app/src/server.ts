@@ -16,6 +16,7 @@ import { subscribe } from "./ws/hub.js";
 import { readSession } from "./auth/session.js";
 import { seedChannels } from "./bootstrap.js";
 import { startSnapshotTimer } from "./export/snapshot.js";
+import { startReindexRetryLoop } from "./ai/reindex-retry.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -58,6 +59,7 @@ app.setNotFoundHandler((req, reply) => {
 
 await seedChannels();
 startSnapshotTimer();
+startReindexRetryLoop();
 
 app.listen({ port: config.port, host: "0.0.0.0" }).catch((err) => {
   app.log.error(err);

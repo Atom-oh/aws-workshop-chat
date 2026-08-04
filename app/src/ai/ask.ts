@@ -75,8 +75,8 @@ if (!MODEL_ID) {
 }
 console.log(`[ai] context mode: ${KB_ID ? `knowledge-base (${KB_ID})` : "prompt-injection fallback"}`);
 
-const kbClient = new BedrockAgentRuntimeClient({});
-const converseClient = new BedrockRuntimeClient({});
+const kbClient = new BedrockAgentRuntimeClient({ region: process.env.BEDROCK_REGION });
+const converseClient = new BedrockRuntimeClient({ region: process.env.BEDROCK_REGION });
 
 export interface RetrievedPassage {
   text: string;

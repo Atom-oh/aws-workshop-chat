@@ -69,6 +69,11 @@ export interface GuideDoc {
   sizeBytes: number;
   active: boolean;
   lastModified: string | null;
+  // Real per-document Knowledge Base status, counted from the vector index itself — Bedrock's
+  // own document-tracking API can mark a doc "indexed" even when its write to the vector store
+  // failed, so this comes from actually counting chunks (see app/src/ai/guide-index.ts).
+  // undefined when the KB isn't enabled for this deployment (region fallback).
+  indexStatus?: "indexing" | "indexed" | "retrying" | "failed" | "pending";
 }
 
 export interface NoShow {
@@ -82,6 +87,14 @@ export interface Attendance {
   joinedCount: number;
   noShowCount: number;
   noShows: NoShow[];
+}
+
+export interface Participant {
+  participantId: string;
+  questionCount: number;
+  aiQueryCount: number;
+  lastSeen: string;
+  blocked: boolean;
 }
 
 export const api = {
@@ -107,14 +120,14 @@ export const api = {
     req(`/api/channels/${slug}/messages/${ulid}/resolve`, { method: "POST" }),
   deleteMessage: (slug: string, ulid: string) =>
     req(`/api/channels/${slug}/messages/${ulid}`, { method: "DELETE" }),
-  questions: (status: "open" | "resolved") => req<{ questions: any[] }>(`/api/questions?status=${status}`),
+  questions: (status: "open" | "resolved") => req<{ questions: Message[] }>(`/api/questions?status=${status}`),
 
   labStep: () => req<{ step: string }>("/api/labstep"),
   setLabStep: (step: string) => req("/api/labstep", { method: "POST", body: JSON.stringify({ step }) }),
 
   ask: (query: string) => req<{ answer: string; refDocs: string[] }>("/api/ai/ask", { method: "POST", body: JSON.stringify({ query }) }),
 
-  participants: () => req<{ participants: any[] }>("/api/participants"),
+  participants: () => req<{ participants: Participant[] }>("/api/participants"),
   block: (id: string) => req(`/api/participants/${id}/block`, { method: "POST" }),
   unblock: (id: string) => req(`/api/participants/${id}/unblock`, { method: "POST" }),
 
@@ -136,8 +149,6 @@ export const api = {
     req(`/api/ai/${aiUlid}/feedback`, { method: "POST", body: JSON.stringify({ feedback }) }),
 
   attendance: () => req<Attendance>("/api/operator/attendance"),
-  resendJoinLink: (participantId: string) =>
-    req<{ joinUrl: string }>(`/api/operator/attendance/${participantId}/resend`, { method: "POST" }),
 
   guideDocs: () => req<{ docs: GuideDoc[] }>("/api/operator/guide-docs"),
   presignGuideDoc: (filename: string, contentType: string, sizeBytes: number) =>
@@ -149,7 +160,10 @@ export const api = {
   deleteGuideDoc: (key: string) => req(`/api/operator/guide-docs?key=${encodeURIComponent(key)}`, { method: "DELETE" }),
   toggleGuideDoc: (key: string) => req(`/api/operator/guide-docs/toggle?key=${encodeURIComponent(key)}`, { method: "POST" }),
   reindexGuideDocs: () => req<{ jobId: string; status: string }>("/api/operator/guide-docs/reindex", { method: "POST" }),
-  reindexStatus: () => req<{ status: string | null; startedAt?: string }>("/api/operator/guide-docs/reindex-status"),
+  reindexStatus: () =>
+    req<{ status: string | null; startedAt?: string; attempt?: number; maxAttempts?: number; failedDocs?: string[]; nextRetryAt?: string | null }>(
+      "/api/operator/guide-docs/reindex-status",
+    ),
 };
 
 export const upload = {

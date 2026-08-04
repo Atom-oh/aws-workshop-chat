@@ -9,10 +9,10 @@ test("derivation is deterministic", () => {
   assert.equal(derivePassword(SEED, 0), derivePassword(SEED, 0));
 });
 
-test("derived IDs are 12 numeric digits", () => {
+test("derived IDs are 12 numeric digits followed by @ws", () => {
   for (let i = 0; i < 20; i++) {
     const id = deriveParticipantId(SEED, i);
-    assert.match(id, /^\d{12}$/);
+    assert.match(id, /^\d{12}@ws$/);
   }
 });
 

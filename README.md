@@ -125,6 +125,14 @@ Region and account come from your CLI's configured environment
 (`CDK_DEFAULT_REGION`/`CDK_DEFAULT_ACCOUNT`) — nothing is hardcoded in the stack. Deploy from
 whichever region is closest to your participants.
 
+**Bedrock in a different region (`bedrockRegion`).** Some environments — an AWS Workshop Studio
+participant account, for example — only expose Bedrock (models, Knowledge Bases, S3 Vectors) in
+one specific region, usually `us-east-1`, while the rest of the app should still deploy near your
+participants. Pass `--context bedrockRegion="us-east-1"` and everything Bedrock-related
+(`lib/bedrock-stack.ts`: the KB, S3 Vectors bucket/index) deploys there as its own stack, cross-
+region-referenced into the main one — same pattern as the WAF stack below. Omit it and Bedrock
+stays in the main stack's own region, unchanged from before.
+
 **Outputs** (`npx cdk deploy` prints these, or `aws cloudformation describe-stacks`):
 `AppUrl`, `OperatorConsoleUrl` (`<AppUrl>/operator`), `ExportBucketPath`, `GuideBucketPath`,
 `GuideSyncCommand` (when the Knowledge Base is enabled), `OperatorUsername`,

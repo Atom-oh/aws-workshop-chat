@@ -56,8 +56,15 @@ export interface GuideReindexItem {
   pk: "WORKSHOP";
   sk: "GUIDE_REINDEX";
   jobId: string;
-  status: string; // raw Bedrock ingestion job status
+  // Raw Bedrock ingestion job status (STARTING/IN_PROGRESS/COMPLETE/FAILED) while a job is
+  // running, plus two states the retry loop derives itself once a job completes:
+  // RETRY_SCHEDULED (some docs came back with 0 chunks, a touch-and-restart is queued) and
+  // EXHAUSTED (still failing after maxAttempts — stop retrying, surface it to the operator).
+  status: string;
   startedAt: string;
+  attempt: number; // 1-based; reset to 1 whenever a human clicks "reindex now"
+  failedDocs: string[]; // doc names with zero indexed chunks after the last completed job
+  nextRetryAt?: string; // set while status === RETRY_SCHEDULED
 }
 
 export interface TimelineItem {

@@ -90,7 +90,6 @@ const DICT: Record<string, string> = {
   "입장 완료": "Joined",
   "미입장": "Not joined",
   "참가자 ID": "Participant ID",
-  "링크 재전송": "Resend link",
   "모든 참가자가 입장했습니다.": "Everyone has joined.",
   "워크샵 계정은 언젠가 삭제됩니다. 종료 전 xlsx를 반드시 다운로드하세요.":
     "Workshop accounts will eventually be deleted. Be sure to download the xlsx before it ends.",
@@ -100,7 +99,6 @@ const DICT: Record<string, string> = {
   "문서를 삭제했습니다": "Document deleted",
   "재인덱싱을 시작했습니다": "Reindexing started",
   "업로드 완료 · 재인덱싱이 필요합니다": "Upload complete · reindexing required",
-  "조인 링크를 재전송했습니다": "join link resent",
   "step": "step",
   "오류": "Error",
   "읽기 전용": "Read-only",
@@ -111,12 +109,47 @@ const DICT: Record<string, string> = {
   "아카이브 · 읽기 전용": "Archived · read-only",
   "이 채널은 아카이브되어 읽기 전용입니다.": "This channel is archived and read-only.",
   "프롬프트 주입 사용량": "Prompt-injection usage",
+  "인덱싱": "Indexing",
+  "대기중": "Pending",
+  "인덱싱 중": "Indexing…",
+  "재시도 중": "Retrying",
+  "인덱싱됨": "Indexed",
+  "인덱싱 실패": "Failed",
+  "재시도": "retry",
+  "다음 재시도": "next retry",
+  "재시도 소진": "retries exhausted",
+  "실패 문서": "failed docs",
   "업로드 실패": "upload failed",
   "프로젝터 가시성 테마 전환": "Toggle projector-visibility theme",
   "프로젝터 모드": "Projector mode",
   "다크 모드": "Dark mode",
   "로그인 링크 복사": "Copy login link",
+  "운영자 화면으로 이동": "Go to operator console",
   "참가자에게 보이지 않음": "not visible to participants",
+  "로스터 · 참가자 관리": "Roster · Participants",
+  "로스터 · 조인 링크": "Roster · Join links",
+  "참가자에게 배포할 조인 링크입니다. QR을 인쇄하거나 CSV로 내려받을 수 있습니다.":
+    "Join links to hand out to participants. Print the QR or download as CSV.",
+  "CSV 다운로드": "Download CSV",
+  "조인 링크": "Join link",
+  "QR 보기": "View QR",
+  "복사": "Copy",
+  "생성된 로스터가 없습니다 (participantCount=0).": "No roster generated (participantCount=0).",
+  "참가자 관리 · 차단": "Participants · Block",
+  "입장한 참가자만 표시됩니다. 차단된 참가자는 메시지를 보낼 수 없습니다.":
+    "Only participants who have joined are shown. Blocked participants can't post.",
+  "질문": "Questions",
+  "AI 질문": "AI queries",
+  "차단됨": "Blocked",
+  "활동중": "Active",
+  "차단 해제": "Unblock",
+  "차단": "Block",
+  "참가자를 차단했습니다": "Participant blocked",
+  "차단을 해제했습니다": "Participant unblocked",
+  "아직 입장한 참가자가 없습니다.": "No participants have joined yet.",
+  "이 채널은 운영자만 글을 올릴 수 있습니다.": "Only the operator can post in this channel.",
+  "조인 링크가 만료되었거나 올바르지 않습니다. 아래 ID/비밀번호로 로그인해 주세요.":
+    "Your join link has expired or is invalid. Please log in with your ID/password below.",
 
   // Login
   "참가자 간에는 익명입니다. 운영자는 참가자에게 발급된 참가자 ID를 확인할 수 있습니다.":
@@ -163,8 +196,8 @@ export function LocaleToggle() {
       onClick={() => setLocale(locale === "ko" ? "en" : "ko")}
       title="Language / 언어"
       style={{
-        height: 30, padding: "0 11px", border: "1px solid rgba(255,255,255,.2)", borderRadius: 999,
-        background: "transparent", color: "#fff", cursor: "pointer", fontSize: 12.5, fontWeight: 600,
+        height: 30, padding: "0 11px", border: "1px solid rgba(var(--c-w),.2)", borderRadius: 999,
+        background: "transparent", color: "var(--c-fg)", cursor: "pointer", fontSize: 12.5, fontWeight: 600,
       }}
     >
       {locale === "ko" ? "EN" : "한국어"}

@@ -19,26 +19,27 @@ import * as route53targets from "aws-cdk-lib/aws-route53-targets";
 import * as customResources from "aws-cdk-lib/custom-resources";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import { Runtime } from "aws-cdk-lib/aws-lambda";
-import * as bedrock from "aws-cdk-lib/aws-bedrock";
-import * as s3vectors from "aws-cdk-lib/aws-s3vectors";
 import * as path from "node:path";
-
-// amazon.titan-embed-text-v2:0 in its default 1024-dim configuration. Not a deploy parameter:
-// changing the embedding model requires rebuilding the vector index, and Titan v2 is available
-// nearly everywhere Bedrock KBs are, which matters more here than model choice does for a
-// short-lived lab-guide index. `bedrockModelId` (the chat model) remains fully parameterised.
-const EMBEDDING_MODEL_ID = "amazon.titan-embed-text-v2:0";
-const EMBEDDING_DIMENSION = 1024;
 
 export interface WorkshopChatStackProps extends StackProps {
   workshopName: string;
   scale: "small" | "large";
   bedrockModelId: string;
+  /**
+   * Region Bedrock (and the KB, if enabled) actually lives in — see lib/bedrock-stack.ts.
+   * Defaults to this stack's own region in app.ts; only differs when the environment (e.g. an
+   * AWS Workshop Studio participant account) restricts Bedrock to a single region.
+   */
+  bedrockRegion: string;
   /** Cognito username for the one operator account; a random password is generated at deploy. */
   adminUsername: string;
   participantPassphrase: string;
   participantCount: number;
-  enableKnowledgeBase: boolean;
+  /** Deterministic name computed in app.ts — see the comment there for why it can't be auto-generated. */
+  guideBucketName: string;
+  /** Both present when enableKnowledgeBase=true (bedrock-stack.ts); absent for the prompt-injection fallback. */
+  knowledgeBaseId?: string;
+  dataSourceId?: string;
   /** ARN of a CLOUDFRONT-scoped WAFv2 WebACL, created in us-east-1 — see lib/waf-stack.ts. */
   webAclArn: string;
   /** All three required together for a custom domain; omit all to fall back to the raw CloudFront domain. */
@@ -71,9 +72,14 @@ export class WorkshopChatStack extends Stack {
     const mediaBucket = new s3.Bucket(this, "MediaBucket", { ...bucketProps, cors: [
       { allowedMethods: [s3.HttpMethods.PUT], allowedOrigins: ["*"], allowedHeaders: ["*"] },
     ] });
-    const guideBucket = new s3.Bucket(this, "GuideBucket", { ...bucketProps, cors: [
-      { allowedMethods: [s3.HttpMethods.PUT], allowedOrigins: ["*"], allowedHeaders: ["*"] },
-    ] });
+    const guideBucket = new s3.Bucket(this, "GuideBucket", {
+      ...bucketProps,
+      // Deterministic (computed in app.ts), not auto-generated — the Bedrock stack's KB data
+      // source needs this ARN as a plain string to avoid a circular cross-stack dependency
+      // (see the comment on `guideBucketArn` in bin/app.ts).
+      bucketName: props.guideBucketName,
+      cors: [{ allowedMethods: [s3.HttpMethods.PUT], allowedOrigins: ["*"], allowedHeaders: ["*"] }],
+    });
     const exportsBucket = new s3.Bucket(this, "ExportsBucket", bucketProps);
 
     new s3deploy.BucketDeployment(this, "GuideDeployment", {
@@ -135,14 +141,6 @@ export class WorkshopChatStack extends Stack {
       removalPolicy: RemovalPolicy.DESTROY, // §3: no resource may outlive the 3-day account
     });
 
-    // ---------- Knowledge Base (S3 Vectors) — optional, region-gated ----------
-    // Wired up conditionally so `enableKnowledgeBase=false` skips it cleanly when S3 Vectors
-    // isn't available in the target region (§6.3 region fallback) — the app then injects the
-    // guide text directly into the prompt instead of retrieving from a KB.
-    const knowledgeBase = props.enableKnowledgeBase
-      ? this.setupKnowledgeBase(props.workshopName, guideBucket)
-      : undefined;
-
     // ---------- Networking ----------
     const vpc = new ec2.Vpc(this, "Vpc", {
       maxAzs: 2,
@@ -170,8 +168,20 @@ export class WorkshopChatStack extends Stack {
           "bedrock:Retrieve",
           "bedrock:StartIngestionJob",
           "bedrock:GetIngestionJob",
+          "bedrock:GetKnowledgeBase", // resolves the KB's vector-bucket/index ARNs, see guide-index.ts
         ],
         resources: ["*"], // model/KB ARNs vary by region+model; scoping further needs the ARN at synth time
+      }),
+    );
+    taskRole.addToPolicy(
+      new iam.PolicyStatement({
+        // The reindex retry loop (app/src/ai/guide-index.ts) counts chunks per source document
+        // directly from the vector index — Bedrock's own per-document status API can report a
+        // document "indexed" even when its write to S3 Vectors actually failed. Wildcard for the
+        // same reason as the bedrock:* grant above: the vector bucket/index now live in a
+        // separate cross-region stack (bedrock-stack.ts) and their ARNs aren't available here.
+        actions: ["s3vectors:ListVectors"],
+        resources: ["*"],
       }),
     );
     taskRole.addToPolicy(
@@ -211,8 +221,9 @@ export class WorkshopChatStack extends Stack {
         COGNITO_ADMIN_GROUP: adminGroup.groupName!,
         COGNITO_PARTICIPANT_GROUP: participantGroup.groupName!,
         BEDROCK_MODEL_ID: props.bedrockModelId,
-        ...(knowledgeBase
-          ? { BEDROCK_KB_ID: knowledgeBase.knowledgeBaseId, BEDROCK_KB_DATA_SOURCE_ID: knowledgeBase.dataSourceId }
+        BEDROCK_REGION: props.bedrockRegion,
+        ...(props.knowledgeBaseId && props.dataSourceId
+          ? { BEDROCK_KB_ID: props.knowledgeBaseId, BEDROCK_KB_DATA_SOURCE_ID: props.dataSourceId }
           : {}),
         SCALE: props.scale,
         ADMIN_USERNAME: props.adminUsername,
@@ -349,95 +360,13 @@ export class WorkshopChatStack extends Stack {
     // the CDK-generated secret name — same seed the app container and the credentials
     // provisioner both already use (see the comment on `credentialSeed` above).
     new CfnOutput(this, "CredentialSeedArn", { value: credentialSeed.secretArn });
-    if (knowledgeBase) {
+    if (props.knowledgeBaseId && props.dataSourceId) {
       // Ingestion is not automatic on upload — this is the exact command to re-run after every
-      // guide change (see README "Guide documents").
+      // guide change (see README "Guide documents"). Runs against bedrockRegion, not this
+      // stack's own region — the KB lives wherever lib/bedrock-stack.ts was deployed.
       new CfnOutput(this, "GuideSyncCommand", {
-        value: `aws bedrock-agent start-ingestion-job --region ${this.region} --knowledge-base-id ${knowledgeBase.knowledgeBaseId} --data-source-id ${knowledgeBase.dataSourceId}`,
+        value: `aws bedrock-agent start-ingestion-job --region ${props.bedrockRegion} --knowledge-base-id ${props.knowledgeBaseId} --data-source-id ${props.dataSourceId}`,
       });
     }
-  }
-
-  /**
-   * S3-Vectors-backed Bedrock Knowledge Base for the lab guide. Kept as its own method (rather
-   * than inline in the constructor) so `enableKnowledgeBase=false` skips it cleanly for the
-   * §6.3 region fallback, where the app instead injects the guide text directly into the prompt.
-   */
-  private setupKnowledgeBase(
-    workshopName: string,
-    guideBucket: s3.Bucket,
-  ): { knowledgeBaseId: string; dataSourceId: string } {
-    const vectorBucket = new s3vectors.CfnVectorBucket(this, "VectorBucket", {
-      vectorBucketName: `${workshopName}-guide-vectors`.toLowerCase().slice(0, 63),
-    });
-    const index = new s3vectors.CfnIndex(this, "VectorIndex", {
-      vectorBucketArn: vectorBucket.attrVectorBucketArn,
-      indexName: "guide",
-      dataType: "float32",
-      dimension: EMBEDDING_DIMENSION,
-      distanceMetric: "cosine",
-      // Without this, Bedrock stores each chunk's raw text as FILTERABLE metadata (key
-      // AMAZON_BEDROCK_TEXT), which S3 Vectors caps at 2048 bytes per vector — a single chunk of
-      // dense-UTF-8 (Korean) HTML content blows past that easily and the whole document fails
-      // ingestion with "Filterable metadata must have at most 2048 bytes". Marking it
-      // non-filterable moves it into the separate 40KB-per-vector allowance instead. Can only be
-      // set at index creation — not updatable after the fact.
-      metadataConfiguration: { nonFilterableMetadataKeys: ["AMAZON_BEDROCK_TEXT"] },
-    });
-
-    const kbRole = new iam.Role(this, "KnowledgeBaseRole", {
-      assumedBy: new iam.ServicePrincipal("bedrock.amazonaws.com"),
-    });
-    const invokeModelGrant = kbRole.addToPrincipalPolicy(
-      new iam.PolicyStatement({
-        actions: ["bedrock:InvokeModel"],
-        resources: [`arn:aws:bedrock:${this.region}::foundation-model/${EMBEDDING_MODEL_ID}`],
-      }),
-    );
-    const s3vectorsGrant = kbRole.addToPrincipalPolicy(
-      new iam.PolicyStatement({
-        actions: ["s3vectors:GetVectors", "s3vectors:PutVectors", "s3vectors:QueryVectors", "s3vectors:GetIndex"],
-        resources: [index.attrIndexArn, vectorBucket.attrVectorBucketArn],
-      }),
-    );
-    guideBucket.grantRead(kbRole);
-
-    const kb = new bedrock.CfnKnowledgeBase(this, "KnowledgeBase", {
-      name: `${workshopName}-guide-kb`,
-      roleArn: kbRole.roleArn,
-      knowledgeBaseConfiguration: {
-        type: "VECTOR",
-        vectorKnowledgeBaseConfiguration: {
-          embeddingModelArn: `arn:aws:bedrock:${this.region}::foundation-model/${EMBEDDING_MODEL_ID}`,
-        },
-      },
-      storageConfiguration: {
-        type: "S3_VECTORS",
-        s3VectorsConfiguration: {
-          vectorBucketArn: vectorBucket.attrVectorBucketArn,
-          indexArn: index.attrIndexArn,
-        },
-      },
-    });
-    kb.node.addDependency(index);
-    // IAM policy attachment (a separate CFN resource from the Role itself) has no implicit
-    // dependency edge to KB — without this, KB creation can race the policy attach and fail
-    // with an AccessDenied on s3vectors:QueryVectors.
-    if (invokeModelGrant.policyDependable) kb.node.addDependency(invokeModelGrant.policyDependable);
-    if (s3vectorsGrant.policyDependable) kb.node.addDependency(s3vectorsGrant.policyDependable);
-
-    const dataSource = new bedrock.CfnDataSource(this, "GuideDataSource", {
-      knowledgeBaseId: kb.attrKnowledgeBaseId,
-      name: `${workshopName}-guide-source`,
-      dataSourceConfiguration: {
-        type: "S3",
-        s3Configuration: {
-          bucketArn: guideBucket.bucketArn,
-          inclusionPrefixes: ["guide/"],
-        },
-      },
-    });
-
-    return { knowledgeBaseId: kb.attrKnowledgeBaseId, dataSourceId: dataSource.attrDataSourceId };
   }
 }
