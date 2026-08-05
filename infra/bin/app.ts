@@ -34,15 +34,6 @@ for (const [key, value] of Object.entries({ bedrockModelId, participantPassphras
   }
 }
 
-// The guide-docs bucket is owned by the main stack, but the Bedrock stack's S3 data source needs
-// its ARN and the main stack needs the Bedrock stack's KB id — a real circular dependency between
-// two CDK stacks. Broken by giving the bucket a deterministic name computed here (before either
-// stack exists) instead of letting CDK auto-generate one, so its ARN is just a string, not a
-// cross-stack reference. See workshop-chat-stack.ts's GuideBucket construct.
-const account = process.env.CDK_DEFAULT_ACCOUNT;
-const guideBucketName = `${workshopName}-guide-${account}`.toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 63);
-const guideBucketArn = `arn:aws:s3:::${guideBucketName}`;
-
 // CLOUDFRONT-scoped WAFv2 WebACLs are a us-east-1-only API regardless of the app stack's region
 // (see lib/waf-stack.ts) — a separate stack + CDK's cross-region reference support is the
 // smallest way to satisfy that without hardcoding the app's own deploy region to us-east-1.
@@ -55,7 +46,6 @@ const wafStack = new WorkshopChatWafStack(app, `${workshopName}-WorkshopChatWaf`
 const bedrockStack = enableKnowledgeBase
   ? new WorkshopChatBedrockStack(app, `${workshopName}-WorkshopChatBedrock`, {
       workshopName,
-      guideBucketArn,
       crossRegionReferences: true,
       env: { account: process.env.CDK_DEFAULT_ACCOUNT, region: bedrockRegion },
     })
@@ -69,7 +59,12 @@ new WorkshopChatStack(app, `${workshopName}-WorkshopChat`, {
   adminUsername,
   participantPassphrase,
   participantCount,
-  guideBucketName,
+  // A Bedrock Knowledge Base's S3 data source must live in the same region as the KB itself, so
+  // when the KB is enabled the guide bucket is owned by bedrock-stack.ts (pinned to
+  // bedrockRegion) instead of here — see the comment there. Undefined when the KB is disabled;
+  // workshop-chat-stack.ts creates its own bucket locally in that case.
+  guideBucketName: bedrockStack?.guideBucketName,
+  guideBucketRegion: bedrockStack ? bedrockRegion : process.env.CDK_DEFAULT_REGION,
   knowledgeBaseId: bedrockStack?.knowledgeBaseId,
   dataSourceId: bedrockStack?.dataSourceId,
   webAclArn: wafStack.webAcl.attrArn,

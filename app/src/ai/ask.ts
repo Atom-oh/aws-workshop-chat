@@ -30,7 +30,10 @@ const GUIDE_BUCKET = process.env.GUIDE_BUCKET;
 const GUIDE_LOCAL_DIR = process.env.GUIDE_LOCAL_DIR; // docker-compose dev: mounted guide/ folder
 const GUIDE_INJECT_MAX_CHARS = 60_000; // ~15k tokens; documented cap for the fallback path
 
-const s3 = new S3Client({});
+// GUIDE_BUCKET can live in a different region than this task when a Bedrock Knowledge Base is
+// enabled (the KB's S3 data source must be co-located with the KB — see infra/lib/bedrock-stack.ts)
+// — explicit region avoids a PermanentRedirect from the SDK defaulting to this task's own region.
+const s3 = new S3Client({ region: process.env.GUIDE_BUCKET_REGION });
 let cachedGuideText: string | null = null;
 
 /**

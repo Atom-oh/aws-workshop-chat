@@ -35,8 +35,14 @@ export interface WorkshopChatStackProps extends StackProps {
   adminUsername: string;
   participantPassphrase: string;
   participantCount: number;
-  /** Deterministic name computed in app.ts — see the comment there for why it can't be auto-generated. */
-  guideBucketName: string;
+  /**
+   * Owned by bedrock-stack.ts (in bedrockRegion) when the KB is enabled — a Bedrock KB's S3 data
+   * source must be in the same region as the KB. Undefined when the KB is disabled, in which
+   * case this stack creates its own bucket locally.
+   */
+  guideBucketName?: string;
+  /** Region the guide bucket actually lives in — bedrockRegion when guideBucketName is set, this stack's own region otherwise. Read by the app container's S3Client to avoid a cross-region PermanentRedirect. */
+  guideBucketRegion: string;
   /** Both present when enableKnowledgeBase=true (bedrock-stack.ts); absent for the prompt-injection fallback. */
   knowledgeBaseId?: string;
   dataSourceId?: string;
@@ -72,22 +78,25 @@ export class WorkshopChatStack extends Stack {
     const mediaBucket = new s3.Bucket(this, "MediaBucket", { ...bucketProps, cors: [
       { allowedMethods: [s3.HttpMethods.PUT], allowedOrigins: ["*"], allowedHeaders: ["*"] },
     ] });
-    const guideBucket = new s3.Bucket(this, "GuideBucket", {
-      ...bucketProps,
-      // Deterministic (computed in app.ts), not auto-generated — the Bedrock stack's KB data
-      // source needs this ARN as a plain string to avoid a circular cross-stack dependency
-      // (see the comment on `guideBucketArn` in bin/app.ts).
-      bucketName: props.guideBucketName,
-      cors: [{ allowedMethods: [s3.HttpMethods.PUT], allowedOrigins: ["*"], allowedHeaders: ["*"] }],
-    });
+    // When the KB is enabled, bedrock-stack.ts owns the actual bucket (must be co-located with
+    // the KB) and only hands back its name; imported here by name rather than constructed. When
+    // disabled, this stack owns it directly, same as before.
+    const guideBucket: s3.IBucket = props.guideBucketName
+      ? s3.Bucket.fromBucketName(this, "GuideBucket", props.guideBucketName)
+      : new s3.Bucket(this, "GuideBucket", {
+          ...bucketProps,
+          cors: [{ allowedMethods: [s3.HttpMethods.PUT], allowedOrigins: ["*"], allowedHeaders: ["*"] }],
+        });
     const exportsBucket = new s3.Bucket(this, "ExportsBucket", bucketProps);
 
-    new s3deploy.BucketDeployment(this, "GuideDeployment", {
-      sources: [s3deploy.Source.asset(path.join(__dirname, "../../guide"))],
-      destinationBucket: guideBucket,
-      destinationKeyPrefix: "guide",
-      prune: false, // operator-uploaded guide docs (§ops) must survive later `cdk deploy` runs
-    });
+    if (!props.guideBucketName) {
+      new s3deploy.BucketDeployment(this, "GuideDeployment", {
+        sources: [s3deploy.Source.asset(path.join(__dirname, "../../guide"))],
+        destinationBucket: guideBucket,
+        destinationKeyPrefix: "guide",
+        prune: false, // operator-uploaded guide docs (§ops) must survive later `cdk deploy` runs
+      });
+    }
 
     // ---------- Cognito ----------
     const userPool = new cognito.UserPool(this, "UserPool", {
@@ -180,7 +189,10 @@ export class WorkshopChatStack extends Stack {
         // document "indexed" even when its write to S3 Vectors actually failed. Wildcard for the
         // same reason as the bedrock:* grant above: the vector bucket/index now live in a
         // separate cross-region stack (bedrock-stack.ts) and their ARNs aren't available here.
-        actions: ["s3vectors:ListVectors"],
+        // ListVectors with returnMetadata:true (as used here) requires GetVectors, not just
+        // ListVectors — confirmed live via a 403 AccessDeniedException naming GetVectors even
+        // though the SDK call is ListVectorsCommand.
+        actions: ["s3vectors:ListVectors", "s3vectors:GetVectors"],
         resources: ["*"],
       }),
     );
@@ -188,8 +200,18 @@ export class WorkshopChatStack extends Stack {
       new iam.PolicyStatement({
         // AdminInitiateAuth verifies the password; AdminListGroupsForUser checks which of
         // admin/participant the authenticated user belongs to (role now comes from Cognito
-        // group membership, not a hardcoded adminUsername comparison).
-        actions: ["cognito-idp:AdminInitiateAuth", "cognito-idp:AdminListGroupsForUser"],
+        // group membership, not a hardcoded adminUsername comparison). ListUsersInGroup backs
+        // the operator console's roster/attendance views (listParticipantIds in auth/cognito.ts)
+        // — the participant group is the real headcount, not a locally-derived guess.
+        actions: [
+          "cognito-idp:AdminInitiateAuth",
+          "cognito-idp:AdminListGroupsForUser",
+          "cognito-idp:ListUsersInGroup",
+          // DescribeUserPool backs listParticipantIds' one-time check of whether this pool's
+          // Username is the participant ID itself or an opaque ID with the real value in the
+          // email attribute (see participantIdOf in auth/cognito.ts).
+          "cognito-idp:DescribeUserPool",
+        ],
         resources: [userPool.userPoolArn],
       }),
     );
@@ -215,6 +237,7 @@ export class WorkshopChatStack extends Stack {
         TABLE_NAME: table.tableName,
         MEDIA_BUCKET: mediaBucket.bucketName,
         GUIDE_BUCKET: guideBucket.bucketName,
+        GUIDE_BUCKET_REGION: props.guideBucketRegion,
         EXPORT_BUCKET: exportsBucket.bucketName,
         COGNITO_USER_POOL_ID: userPool.userPoolId,
         COGNITO_CLIENT_ID: userPoolClient.userPoolClientId,

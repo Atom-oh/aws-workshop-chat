@@ -78,7 +78,6 @@ export interface GuideDoc {
 
 export interface NoShow {
   participantId: string;
-  index: number;
   joinUrl: string;
 }
 
@@ -87,6 +86,10 @@ export interface Attendance {
   joinedCount: number;
   noShowCount: number;
   noShows: NoShow[];
+  // "cognito": the roster came from Cognito's participant group (production truth). "derived":
+  // no Cognito user pool is configured for this deployment, so it's a local-dev placeholder
+  // roster — the operator should not treat these numbers as the real headcount.
+  source: "cognito" | "derived";
 }
 
 export interface Participant {
@@ -138,9 +141,11 @@ export const api = {
   exportStatus: () =>
     req<{ lastExportAt: string | null; rowCounts: Record<string, number> | null }>("/api/export/status"),
 
-  roster: () => req<{ roster: { participantId: string; joinUrl: string }[]; participantPassphrase: string }>(
-    "/api/operator/roster",
-  ),
+  roster: () => req<{
+    roster: { participantId: string; joinUrl: string }[];
+    source: "cognito" | "derived";
+    participantPassphrase: string;
+  }>("/api/operator/roster"),
 
   operatorLoginLink: () => req<{ loginUrl: string }>("/api/operator/login-link"),
 
