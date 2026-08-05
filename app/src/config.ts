@@ -13,6 +13,9 @@ export const config = {
   // membership, not from comparing the typed username against this value.
   adminUsername: process.env.ADMIN_USERNAME ?? "admin@ws",
   scale: (process.env.SCALE as "small" | "large") ?? "small",
+  // Only meaningful for the local-dev / no-Cognito-configured fallback roster
+  // (see resolveRoster in routes/operator.ts) — once COGNITO_USER_POOL_ID is set, the
+  // `participant` group in Cognito is the real headcount and this value is never read for it.
   participantCount: Number(process.env.PARTICIPANT_COUNT ?? 10),
   port: Number(process.env.PORT ?? 3000),
   sessionTtlSeconds: 60 * 60 * 24 * 4, // 4 days, comfortably covers the 3-day workshop

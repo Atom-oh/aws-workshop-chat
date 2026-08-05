@@ -200,8 +200,18 @@ export class WorkshopChatStack extends Stack {
       new iam.PolicyStatement({
         // AdminInitiateAuth verifies the password; AdminListGroupsForUser checks which of
         // admin/participant the authenticated user belongs to (role now comes from Cognito
-        // group membership, not a hardcoded adminUsername comparison).
-        actions: ["cognito-idp:AdminInitiateAuth", "cognito-idp:AdminListGroupsForUser"],
+        // group membership, not a hardcoded adminUsername comparison). ListUsersInGroup backs
+        // the operator console's roster/attendance views (listParticipantIds in auth/cognito.ts)
+        // — the participant group is the real headcount, not a locally-derived guess.
+        actions: [
+          "cognito-idp:AdminInitiateAuth",
+          "cognito-idp:AdminListGroupsForUser",
+          "cognito-idp:ListUsersInGroup",
+          // DescribeUserPool backs listParticipantIds' one-time check of whether this pool's
+          // Username is the participant ID itself or an opaque ID with the real value in the
+          // email attribute (see participantIdOf in auth/cognito.ts).
+          "cognito-idp:DescribeUserPool",
+        ],
         resources: [userPool.userPoolArn],
       }),
     );

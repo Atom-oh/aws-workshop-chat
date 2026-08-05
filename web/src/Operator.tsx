@@ -576,8 +576,18 @@ function DocsView({ docs, reindexStatus, onUpload, onToggle, onDelete, onReindex
 
 // ---------- Attendance ----------
 
-function AttendanceView({ attendance, onResend }: { attendance: Attendance | null; onResend: (n: NoShow) => void }) {
+function AttendanceView({ attendance, error, onResend }: { attendance: Attendance | null; error: string | null; onResend: (n: NoShow) => void }) {
   const { t } = useLocale();
+  // Distinguish "the fetch failed" from "attendance hasn't loaded yet" — a silent `return null`
+  // for both used to make a broken Cognito lookup indistinguishable from a quiet screen, letting
+  // the UI fall back to fabricated numbers elsewhere instead of surfacing the real problem.
+  if (error) {
+    return (
+      <div style={{ padding: 20, color: COLORS.redText, fontSize: 13.5 }}>
+        {t("참가자 명단을 불러올 수 없습니다 (Cognito 권한 확인 필요)")}: {error}
+      </div>
+    );
+  }
   if (!attendance) return null;
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
@@ -618,20 +628,36 @@ function AttendanceView({ attendance, onResend }: { attendance: Attendance | nul
   );
 }
 
-function RosterView({ roster, participants, onCopyLink, onBlock, onUnblock }: {
+function RosterView({ roster, source, error, participants, onCopyLink, onBlock, onUnblock }: {
   roster: { participantId: string; joinUrl: string }[];
+  source: "cognito" | "derived" | null;
+  error: string | null;
   participants: Participant[];
   onCopyLink: (url: string) => void;
   onBlock: (id: string) => void;
   onUnblock: (id: string) => void;
 }) {
   const { t } = useLocale();
+  if (error) {
+    return (
+      <div style={{ padding: 20, color: COLORS.redText, fontSize: 13.5 }}>
+        {t("참가자 명단을 불러올 수 없습니다 (Cognito 권한 확인 필요)")}: {error}
+      </div>
+    );
+  }
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, overflowY: "auto" }}>
       <div style={{ flex: "none", padding: "16px 20px 14px", borderBottom: `1px solid ${COLORS.border}` }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
           <div>
-            <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>{t("로스터 · 조인 링크")}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>{t("로스터 · 조인 링크")}</div>
+              {source === "derived" && (
+                <span style={{ fontSize: 10.5, fontWeight: 700, padding: "2px 8px", borderRadius: 999, background: "rgba(var(--c-danger-rgb),.14)", border: "1px solid rgba(var(--c-danger-rgb),.45)", color: COLORS.redText }}>
+                  {t("로컬 파생 로스터")}
+                </span>
+              )}
+            </div>
             <div style={{ fontSize: 12.5, color: COLORS.dim }}>{t("참가자에게 배포할 조인 링크입니다. QR을 인쇄하거나 CSV로 내려받을 수 있습니다.")}</div>
           </div>
           <a href="/api/operator/roster.csv" className="hover-accent-border" style={{ height: 30, padding: "0 14px", display: "flex", alignItems: "center", border: "1px solid rgba(var(--c-w),.18)", borderRadius: 999, color: COLORS.fg2, fontSize: 12.5, fontWeight: 600, textDecoration: "none", flexShrink: 0 }}>
@@ -643,11 +669,11 @@ function RosterView({ roster, participants, onCopyLink, onBlock, onUnblock }: {
         <div style={{ display: "grid", gridTemplateColumns: "150px 1fr 80px 90px", gap: "0 14px", padding: "11px 4px", fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "rgba(var(--c-w),.35)", borderBottom: `1px solid ${COLORS.border}`, marginTop: 8 }}>
           <div>{t("참가자 ID")}</div><div>{t("조인 링크")}</div><div></div><div></div>
         </div>
-        {roster.map((r, i) => (
+        {roster.map((r) => (
           <div key={r.participantId} className="hover-row" style={{ display: "grid", gridTemplateColumns: "150px 1fr 80px 90px", gap: "0 14px", alignItems: "center", padding: "11px 4px", borderBottom: "1px solid rgba(var(--c-w),.055)", fontSize: 13.5 }}>
             <div style={{ fontFamily: "ui-monospace,Menlo,monospace", fontSize: 12.5, color: COLORS.fg2 }}>{r.participantId}</div>
             <div style={{ fontSize: 12, color: COLORS.dim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.joinUrl}</div>
-            <a href={`/api/operator/roster/${i}/qr.png`} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: COLORS.fg2, textDecoration: "none" }}>{t("QR 보기")}</a>
+            <a href={`/api/operator/roster/${encodeURIComponent(r.participantId)}/qr.png`} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: COLORS.fg2, textDecoration: "none" }}>{t("QR 보기")}</a>
             <button onClick={() => onCopyLink(r.joinUrl)} className="hover-accent-border" style={{ height: 26, padding: "0 11px", border: "1px solid rgba(var(--c-w),.18)", borderRadius: 999, background: "transparent", color: COLORS.fg2, font: "500 11.5px/1 inherit", cursor: "pointer" }}>{t("복사")}</button>
           </div>
         ))}
@@ -722,7 +748,10 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
     status: string | null; startedAt?: string; attempt?: number; maxAttempts?: number; failedDocs?: string[]; nextRetryAt?: string | null;
   }>({ status: null });
   const [attendance, setAttendance] = useState<Attendance | null>(null);
+  const [attendanceError, setAttendanceError] = useState<string | null>(null);
   const [roster, setRoster] = useState<{ participantId: string; joinUrl: string }[]>([]);
+  const [rosterSource, setRosterSource] = useState<"cognito" | "derived" | null>(null);
+  const [rosterError, setRosterError] = useState<string | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [lastExport, setLastExport] = useState<string | null>(null);
   const [exportRowCounts, setExportRowCounts] = useState<Record<string, number> | null>(null);
@@ -775,18 +804,26 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
     await loadQuestions();
   }
 
+  function loadAttendance() {
+    api.attendance().then((a) => { setAttendance(a); setAttendanceError(null); }).catch((err) => setAttendanceError(err.message));
+  }
+
+  function loadRoster() {
+    api.roster().then((r) => { setRoster(r.roster); setRosterSource(r.source); setRosterError(null); }).catch((err) => setRosterError(err.message));
+  }
+
   useEffect(() => {
     refresh();
-    api.attendance().then(setAttendance);
+    loadAttendance();
     const interval = setInterval(refresh, 15_000);
     return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
     if (view === "ai") api.aiQueries().then((r) => setAiQueries(r.queries));
-    if (view === "attendance") api.attendance().then(setAttendance);
+    if (view === "attendance") loadAttendance();
     if (view === "roster") {
-      api.roster().then((r) => setRoster(r.roster));
+      loadRoster();
       api.participants().then((r) => setParticipants(r.participants));
     }
   }, [view]);
@@ -995,12 +1032,15 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
           {view === "attendance" && (
             <AttendanceView
               attendance={attendance}
+              error={attendanceError}
               onResend={(n) => copyLink(n.joinUrl)}
             />
           )}
           {view === "roster" && (
             <RosterView
               roster={roster}
+              source={rosterSource}
+              error={rosterError}
               participants={participants}
               onCopyLink={copyLink}
               onBlock={(id) => api.block(id).then(() => api.participants().then((r) => { setParticipants(r.participants); showToast(t("참가자를 차단했습니다")); }))}

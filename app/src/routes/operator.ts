@@ -6,6 +6,7 @@ import { BedrockAgentClient, StartIngestionJobCommand, GetIngestionJobCommand } 
 import { requireOperator } from "../auth/session.js";
 import { issueToken } from "../auth/token.js";
 import { deriveParticipantId } from "../auth/credentials.js";
+import { listParticipantIds } from "../auth/cognito.js";
 import { config } from "../config.js";
 import { invalidateGuideCache } from "../ai/ask.js";
 import { countChunksBySource } from "../ai/guide-index.js";
@@ -19,9 +20,29 @@ import {
 } from "../db/repo.js";
 
 // §5.4/§10: "operator console credential table" — one row per participant, ID + a ready-to-use
-// join link (and QR), re-derived on demand from the same seed the deploy-time provisioner used.
-// Nothing here is stored separately; raising PARTICIPANT_COUNT and redeploying just grows this
-// list, matching the credentials provisioner's own idempotent behavior.
+// join link (and QR).
+//
+// The roster's source of truth is Cognito's `participant` group (listParticipantIds) —
+// participants are provisioned there by this repo's credentials-provisioner Lambda *or* by an
+// external poller, depending on deployment, and either way Cognito is what actually accepts
+// their login. `deriveParticipantId`/`config.participantCount` are only a fallback for local
+// dev with no Cognito configured at all (COGNITO_USER_POOL_ID unset) — never trust
+// participantCount as a production headcount, that's the bug this replaced.
+// Callback-injected (same shape as provisionCredentials in auth/credentials.ts) so the
+// null/array/throw branches are testable without a real Cognito user pool.
+export async function resolveRosterWith(
+  fetchCognitoIds: () => Promise<string[] | null>,
+  derivedIds: string[],
+): Promise<{ ids: string[]; source: "cognito" | "derived" }> {
+  const cognitoIds = await fetchCognitoIds();
+  if (cognitoIds) return { ids: cognitoIds, source: "cognito" };
+  return { ids: derivedIds, source: "derived" };
+}
+
+async function resolveRoster(): Promise<{ ids: string[]; source: "cognito" | "derived" }> {
+  const derivedIds = Array.from({ length: config.participantCount }, (_, i) => deriveParticipantId(config.sessionSecret, i));
+  return resolveRosterWith(listParticipantIds, derivedIds);
+}
 
 function buildJoinUrl(req: any, participantId: string, role: "participant" | "operator" = "participant"): string {
   const exp = Math.floor(Date.now() / 1000) + config.sessionTtlSeconds;
@@ -55,14 +76,22 @@ function extOf(filename: string): string {
   return i === -1 ? "" : filename.slice(i).toLowerCase();
 }
 
+// participantId now comes from Cognito, which — depending on deployment — may be populated by
+// an external poller rather than this app's own HMAC derivation, so it's no longer guaranteed
+// to be a bare "<12 digits>@ws" string. Neutralize spreadsheet-formula injection (a value
+// starting with =, +, -, or @ that Excel/Sheets would evaluate on open) and quote/escape commas
+// the same way any other CSV writer would.
+function csvCell(value: string): string {
+  const safe = /^[=+\-@]/.test(value) ? `'${value}` : value;
+  return /[",\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
+}
+
 export async function operatorRoutes(app: FastifyInstance) {
   app.get("/api/operator/roster", async (req, reply) => {
     if (!requireOperator(req, reply)) return;
-    const roster = Array.from({ length: config.participantCount }, (_, i) => {
-      const participantId = deriveParticipantId(config.sessionSecret, i);
-      return { participantId, joinUrl: buildJoinUrl(req, participantId) };
-    });
-    reply.send({ roster, participantPassphrase: config.participantPassphrase });
+    const { ids, source } = await resolveRoster();
+    const roster = ids.map((participantId) => ({ participantId, joinUrl: buildJoinUrl(req, participantId) }));
+    reply.send({ roster, source, participantPassphrase: config.participantPassphrase });
   });
 
   // A bookmarkable one-click login for the operator's own account — the same mechanism as the
@@ -75,23 +104,24 @@ export async function operatorRoutes(app: FastifyInstance) {
 
   app.get("/api/operator/roster.csv", async (req, reply) => {
     if (!requireOperator(req, reply)) return;
-    const rows = Array.from({ length: config.participantCount }, (_, i) => {
-      const participantId = deriveParticipantId(config.sessionSecret, i);
-      return `${participantId},${buildJoinUrl(req, participantId)}`;
-    });
+    const { ids } = await resolveRoster();
+    const rows = ids.map((participantId) => `${csvCell(participantId)},${csvCell(buildJoinUrl(req, participantId))}`);
     reply
       .header("Content-Type", "text/csv")
       .header("Content-Disposition", 'attachment; filename="roster.csv"')
       .send(["participantId,joinUrl", ...rows].join("\n"));
   });
 
-  app.get("/api/operator/roster/:index/qr.png", async (req, reply) => {
+  // Addressed by participantId, not a roster-array index — Cognito's ListUsersInGroup makes no
+  // ordering guarantee between calls, so an index resolved against one roster fetch (the page
+  // that rendered this link) could point at a different participant by the time this request
+  // re-fetches the roster to validate it. The join link this mints is scoped to that one
+  // participantId regardless, so there's nothing to validate against a roster anyway — this
+  // route is just requireOperator-gated QR rendering of a token this operator could already
+  // mint via /api/operator/roster.
+  app.get("/api/operator/roster/:participantId/qr.png", async (req, reply) => {
     if (!requireOperator(req, reply)) return;
-    const index = Number((req.params as any).index);
-    if (!Number.isInteger(index) || index < 0 || index >= config.participantCount) {
-      return reply.code(404).send({ error: "index out of range" });
-    }
-    const participantId = deriveParticipantId(config.sessionSecret, index);
+    const { participantId } = req.params as { participantId: string };
     const png = await QRCode.toBuffer(buildJoinUrl(req, participantId), { type: "png", width: 300 });
     reply.header("Content-Type", "image/png").send(png);
   });
@@ -108,24 +138,28 @@ export async function operatorRoutes(app: FastifyInstance) {
   // "Registered" here means a participant's account has actually been created (participants are
   // pseudonymous IDs backed by a shared passphrase or Cognito password, not real AWS accounts —
   // this app deliberately doesn't do Workshop Studio-style account vending, see README). So the
-  // only real 2-stage pipeline is: derivable-but-never-seen vs. has a DynamoDB ParticipantItem
-  // (i.e. has logged in at least once).
+  // only real 2-stage pipeline is: known-to-Cognito-but-never-seen vs. has a DynamoDB
+  // ParticipantItem (i.e. has logged in at least once).
   app.get("/api/operator/attendance", async (req, reply) => {
     if (!requireOperator(req, reply)) return;
+    const { ids, source } = await resolveRoster();
     const joined = await listParticipants();
     const joinedIds = new Set(joined.map((p) => p.participantId));
-    const noShows = Array.from({ length: config.participantCount }, (_, i) => deriveParticipantId(config.sessionSecret, i))
+    const noShows = ids
       .filter((id) => !joinedIds.has(id))
-      .map((participantId, i) => ({ participantId, index: i, joinUrl: buildJoinUrl(req, participantId) }));
+      .map((participantId) => ({ participantId, joinUrl: buildJoinUrl(req, participantId) }));
     reply.send({
-      // noShowCount is `noShows.length`, not `expectedCount - joinedCount` — a Cognito
-      // participant created manually outside the deterministic roster (participantCount=0
-      // during setup, or just extra test logins) still shows up in `joined`, so joined can
-      // exceed expected and the subtraction would go negative.
-      expectedCount: config.participantCount,
-      joinedCount: joined.length,
+      // expectedCount is ids.length; joinedCount only counts joined participants who are also
+      // in ids. Both noShows and joinedCount partition the same roster (ids), so
+      // expected = joined + noShow holds by construction. Counting *all* of `joined` here
+      // (every historical DynamoDB ParticipantItem, including ones since removed from Cognito
+      // or created outside this roster entirely) would break that: joined could exceed expected
+      // and the two counts would contradict each other on screen.
+      expectedCount: ids.length,
+      joinedCount: ids.length - noShows.length,
       noShowCount: noShows.length,
       noShows,
+      source,
     });
   });
 

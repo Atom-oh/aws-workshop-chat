@@ -91,6 +91,8 @@ const DICT: Record<string, string> = {
   "미입장": "Not joined",
   "참가자 ID": "Participant ID",
   "모든 참가자가 입장했습니다.": "Everyone has joined.",
+  "참가자 명단을 불러올 수 없습니다 (Cognito 권한 확인 필요)": "Couldn't load the participant roster (check Cognito permissions)",
+  "로컬 파생 로스터": "Local placeholder roster",
   "워크샵 계정은 언젠가 삭제됩니다. 종료 전 xlsx를 반드시 다운로드하세요.":
     "Workshop accounts will eventually be deleted. Be sure to download the xlsx before it ends.",
   "xlsx 내보내기 완료": "xlsx export complete",

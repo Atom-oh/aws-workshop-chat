@@ -9,6 +9,9 @@ import {
   AdminInitiateAuthCommand,
   AdminGetUserCommand,
   AdminListGroupsForUserCommand,
+  ListUsersInGroupCommand,
+  DescribeUserPoolCommand,
+  type AttributeType,
 } from "@aws-sdk/client-cognito-identity-provider";
 
 const client = new CognitoIdentityProviderClient({});
@@ -56,4 +59,67 @@ export async function getUserRole(username: string): Promise<"admin" | "particip
   if (groups.has(ADMIN_GROUP)) return "admin";
   if (groups.has(PARTICIPANT_GROUP)) return "participant";
   return null;
+}
+
+// Whether this pool's Username is an opaque generated ID (real ID lives in the `email`
+// attribute) or the ID itself, decided once from the pool's own UsernameAttributes config —
+// not guessed per-user from attribute *presence*. Guessing per-user is unsafe: a
+// signInAliases:{username:true} pool (this repo's own CDK stack, standardAttributes: {}) never
+// has an email attribute, but nothing stops some other deployment's schema from carrying an
+// unrelated/unset email field that would otherwise get misread as the real ID, or — worse —
+// collapse two different participants who happen to share that attribute's value.
+let usernameIsEmailCache: Promise<boolean> | undefined;
+async function getUsernameIsEmail(): Promise<boolean> {
+  if (!usernameIsEmailCache) {
+    // A transient DescribeUserPool failure must not poison this cache forever — clear it on
+    // rejection so the next call retries instead of every roster/attendance request failing
+    // until the process restarts.
+    usernameIsEmailCache = client
+      .send(new DescribeUserPoolCommand({ UserPoolId: USER_POOL_ID }))
+      .then((res) => (res.UserPool?.UsernameAttributes ?? []).includes("email"))
+      .catch((err) => {
+        usernameIsEmailCache = undefined;
+        throw err;
+      });
+  }
+  return usernameIsEmailCache;
+}
+
+// Login-usable ID from a Cognito user's Username/attributes, given whether this pool's
+// UsernameAttributes makes Username itself an opaque generated ID (see usernameIsEmail above).
+// AdminInitiateAuth/AdminListGroupsForUser accept either shape as USERNAME, so this still lines
+// up with the rest of this file either way.
+export function participantIdOf(username: string, attributes: AttributeType[] | undefined, usernameIsEmail: boolean): string {
+  if (!usernameIsEmail) return username;
+  const email = attributes?.find((a) => a.Name === "email")?.Value;
+  if (!email) throw new Error(`Cognito user ${username} has no email attribute despite UsernameAttributes=[email]`);
+  return email;
+}
+
+/**
+ * The source of truth for "who is a participant" — this app never creates participants
+ * itself; depending on how it's deployed, either this repo's credentials-provisioner Lambda
+ * or an external poller (sync-cognito) populates the `participant` group. So the roster isn't
+ * a derived calculation, it's a live query.
+ *
+ * Returns null when Cognito isn't configured at all (local dev with no user pool) — that's the
+ * one case callers should fall back to a derived roster. Any other failure (e.g. missing
+ * ListUsersInGroup permission) is thrown, not swallowed — an operator console showing a
+ * fabricated headcount because a lookup silently failed is exactly the bug this replaces.
+ */
+export async function listParticipantIds(): Promise<string[] | null> {
+  if (!USER_POOL_ID) return null;
+  const usesEmailUsername = await getUsernameIsEmail();
+  const ids: string[] = [];
+  let nextToken: string | undefined;
+  do {
+    const res = await client.send(
+      new ListUsersInGroupCommand({ UserPoolId: USER_POOL_ID, GroupName: PARTICIPANT_GROUP, NextToken: nextToken }),
+    );
+    for (const u of res.Users ?? []) {
+      if (u.Username) ids.push(participantIdOf(u.Username, u.Attributes, usesEmailUsername));
+    }
+    nextToken = res.NextToken;
+  } while (nextToken);
+  return ids;
 }
