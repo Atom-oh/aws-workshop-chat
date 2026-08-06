@@ -31,7 +31,7 @@ const BACKOFF_MS = [2, 5, 10].map((min) => min * 60_000); // wait before attempt
 const POLL_INTERVAL_MS = 30_000;
 
 const bedrockAgent = new BedrockAgentClient({ region: process.env.BEDROCK_REGION });
-const s3 = new S3Client({});
+const s3 = new S3Client({ region: process.env.GUIDE_BUCKET_REGION });
 
 async function listActiveGuideDocNames(): Promise<string[]> {
   if (!GUIDE_BUCKET) return [];
