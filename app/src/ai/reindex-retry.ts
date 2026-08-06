@@ -31,6 +31,10 @@ const BACKOFF_MS = [2, 5, 10].map((min) => min * 60_000); // wait before attempt
 const POLL_INTERVAL_MS = 30_000;
 
 const bedrockAgent = new BedrockAgentClient({ region: process.env.BEDROCK_REGION });
+// GUIDE_BUCKET can live in a different region than this task when a Bedrock Knowledge Base is
+// enabled (the KB's S3 data source must be co-located with the KB — see
+// infra/lib/bedrock-stack.ts) — explicit region avoids a PermanentRedirect from the SDK
+// defaulting to this task's own region (same fix as routes/operator.ts's own S3 client).
 const s3 = new S3Client({ region: process.env.GUIDE_BUCKET_REGION });
 
 async function listActiveGuideDocNames(): Promise<string[]> {

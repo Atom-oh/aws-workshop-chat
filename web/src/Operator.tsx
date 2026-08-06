@@ -6,6 +6,7 @@ import { COLORS } from "./theme";
 import Composer from "./Composer";
 import Resizer from "./Resizer";
 import Attachment from "./Attachment";
+import { type PendingAttachment, uploadFile, AttachmentChips } from "./media";
 import { useResizableWidth } from "./useResizableWidth";
 import { readParams, setParams, buildMessageLink, useHighlight } from "./urlState";
 import { useLocale, LocaleToggle } from "./i18n";
@@ -226,18 +227,23 @@ function ThreadPanel({ channel, ulid, message, onClose, width, onResize, initial
   const { locale, t } = useLocale();
   const [replies, setReplies] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
 
   async function load() {
     setReplies((await api.threadReplies(ulid)).replies);
   }
   useEffect(() => { load(); }, [ulid]);
+  // Otherwise a file picked while replying to one thread is still queued if the operator
+  // switches to another thread before sending — and would get attached to the wrong reply.
+  useEffect(() => { setAttachments([]); }, [ulid]);
 
   const highlighted = useHighlight([message, ...replies], initialMsgUlid);
 
   async function send() {
-    if (!draft.trim()) return;
-    await api.postMessage(channel, draft, "msg", ulid);
+    if (!draft.trim() && attachments.length === 0) return;
+    await api.postMessage(channel, draft, "msg", ulid, attachments.map((a) => a.key));
     setDraft("");
+    setAttachments([]);
     load();
   }
 
@@ -284,7 +290,11 @@ function ThreadPanel({ channel, ulid, message, onClose, width, onResize, initial
         </div>
       </div>
       <div style={{ flex: "none", padding: "12px 18px 16px" }}>
-        <Composer value={draft} onChange={setDraft} onSend={send} placeholder={t("운영자로 답변…")} />
+        <Composer
+          value={draft} onChange={setDraft} onSend={send} placeholder={t("운영자로 답변…")}
+          onAttachFiles={(files) => Promise.all(Array.from(files).map(uploadFile)).then((added) => setAttachments((a) => [...a, ...added]))}
+          extra={attachments.length > 0 && <AttachmentChips attachments={attachments} onRemove={(key) => setAttachments((a) => a.filter((x) => x.key !== key))} />}
+        />
       </div>
       </div>
     </>
@@ -300,6 +310,7 @@ function ChannelView({ slug, name, archived, onOpenThread, initialThreadUlid, in
   const { locale, t } = useLocale();
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
   const restoredThreadRef = useRef(false);
   const highlighted = useHighlight(messages, initialMsgUlid);
@@ -328,11 +339,15 @@ function ChannelView({ slug, name, archived, onOpenThread, initialThreadUlid, in
     wsRef.current = ws;
     return () => ws.close();
   }, [slug]);
+  // Otherwise a file picked in one channel is still queued if the operator switches channels
+  // before sending — and would get attached to the wrong channel's message.
+  useEffect(() => { setAttachments([]); }, [slug]);
 
   async function send() {
-    if (!draft.trim()) return;
-    await api.postMessage(slug, draft, "msg");
+    if (!draft.trim() && attachments.length === 0) return;
+    await api.postMessage(slug, draft, "msg", undefined, attachments.map((a) => a.key));
     setDraft("");
+    setAttachments([]);
   }
 
   return (
@@ -384,7 +399,11 @@ function ChannelView({ slug, name, archived, onOpenThread, initialThreadUlid, in
         {archived ? (
           <div style={{ fontSize: 12.5, color: COLORS.fg3, textAlign: "center", padding: "10px 0" }}>{t("이 채널은 아카이브되어 읽기 전용입니다.")}</div>
         ) : (
-          <Composer value={draft} onChange={setDraft} onSend={send} placeholder={locale === "en" ? `Message #${name}` : `#${name} 에 메시지 보내기`} />
+          <Composer
+            value={draft} onChange={setDraft} onSend={send} placeholder={locale === "en" ? `Message #${name}` : `#${name} 에 메시지 보내기`}
+            onAttachFiles={(files) => Promise.all(Array.from(files).map(uploadFile)).then((added) => setAttachments((a) => [...a, ...added]))}
+            extra={attachments.length > 0 && <AttachmentChips attachments={attachments} onRemove={(key) => setAttachments((a) => a.filter((x) => x.key !== key))} />}
+          />
         )}
       </div>
     </div>

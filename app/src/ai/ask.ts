@@ -29,6 +29,7 @@ const MODEL_ID = process.env.BEDROCK_MODEL_ID ?? "";
 const GUIDE_BUCKET = process.env.GUIDE_BUCKET;
 const GUIDE_LOCAL_DIR = process.env.GUIDE_LOCAL_DIR; // docker-compose dev: mounted guide/ folder
 const GUIDE_INJECT_MAX_CHARS = 60_000; // ~15k tokens; documented cap for the fallback path
+const KB_NUMBER_OF_RESULTS = Number(process.env.BEDROCK_KB_NUMBER_OF_RESULTS ?? 10);
 
 // GUIDE_BUCKET can live in a different region than this task when a Bedrock Knowledge Base is
 // enabled (the KB's S3 data source must be co-located with the KB — see infra/lib/bedrock-stack.ts)
@@ -103,7 +104,7 @@ async function defaultRetrieve(query: string): Promise<RetrievedPassage[]> {
     new RetrieveCommand({
       knowledgeBaseId: KB_ID,
       retrievalQuery: { text: query },
-      retrievalConfiguration: { vectorSearchConfiguration: { numberOfResults: 5 } },
+      retrievalConfiguration: { vectorSearchConfiguration: { numberOfResults: KB_NUMBER_OF_RESULTS } },
     }),
   );
   return (res.retrievalResults ?? []).map((r) => ({
