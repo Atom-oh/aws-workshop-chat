@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, upload, wsUrl, type Channel, type Message, type Session } from "./api";
+import { api, wsUrl, type Channel, type Message, type Session } from "./api";
 import { avatarColor, avatarInitials, displayName } from "./format";
 import Markdown from "./Markdown";
 import { COLORS } from "./theme";
@@ -7,25 +7,13 @@ import Composer from "./Composer";
 import Attachment from "./Attachment";
 import Resizer from "./Resizer";
 import { useResizableWidth } from "./useResizableWidth";
-import { formatBytes } from "./media";
+import { type PendingAttachment, uploadFile, AttachmentChips } from "./media";
 import { readParams, setParams, buildMessageLink, useHighlight } from "./urlState";
 import { useLocale, LocaleToggle } from "./i18n";
 
 const ANNOUNCEMENTS_SLUG = "announcements";
 
 type Theme = "midnight" | "projector";
-
-interface PendingAttachment {
-  key: string;
-  name: string;
-  sizeBytes: number;
-}
-
-async function uploadFile(file: File): Promise<PendingAttachment> {
-  const { url, key } = await upload.presign(file.name, file.type || "application/octet-stream", file.size);
-  await fetch(url, { method: "PUT", body: file, headers: { "Content-Type": file.type || "application/octet-stream" } });
-  return { key, name: file.name, sizeBytes: file.size };
-}
 
 function timeLabel(iso: string, locale: "ko" | "en" = "ko") {
   return new Date(iso).toLocaleTimeString(locale === "en" ? "en-US" : "ko-KR", { hour: "2-digit", minute: "2-digit" });
@@ -165,20 +153,6 @@ function ThreadPanel({ slug, message, onClose, width, onResize, initialMsgUlid, 
       </div>
       </div>
     </>
-  );
-}
-
-function AttachmentChips({ attachments, onRemove }: { attachments: PendingAttachment[]; onRemove: (key: string) => void }) {
-  return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
-      {attachments.map((a) => (
-        <div key={a.key} style={{ display: "flex", alignItems: "center", gap: 6, padding: "4px 8px", borderRadius: 999, background: "rgba(var(--c-w),.08)", fontSize: 12 }}>
-          <span>📎 {a.name}</span>
-          <span style={{ color: COLORS.dim }}>{formatBytes(a.sizeBytes)}</span>
-          <button onClick={() => onRemove(a.key)} style={{ border: "none", background: "transparent", color: "rgba(var(--c-w),.5)", cursor: "pointer", padding: 0, fontSize: 13 }}>×</button>
-        </div>
-      ))}
-    </div>
   );
 }
 
