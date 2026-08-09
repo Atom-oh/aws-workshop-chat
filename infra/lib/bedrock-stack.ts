@@ -62,13 +62,24 @@ export class WorkshopChatBedrockStack extends Stack {
       dataType: "float32",
       dimension: EMBEDDING_DIMENSION,
       distanceMetric: "cosine",
-      // Without this, Bedrock stores each chunk's raw text as FILTERABLE metadata (key
-      // AMAZON_BEDROCK_TEXT), which S3 Vectors caps at 2048 bytes per vector — a single chunk of
-      // dense-UTF-8 (Korean) HTML content blows past that easily and the whole document fails
-      // ingestion with "Filterable metadata must have at most 2048 bytes". Marking it
-      // non-filterable moves it into the separate 40KB-per-vector allowance instead. Can only be
-      // set at index creation — not updatable after the fact.
-      metadataConfiguration: { nonFilterableMetadataKeys: ["AMAZON_BEDROCK_TEXT"] },
+      // Without this, Bedrock stores each chunk's raw text (key AMAZON_BEDROCK_TEXT) and its own
+      // ingestion metadata (key AMAZON_BEDROCK_METADATA — source location, create/modify dates)
+      // as FILTERABLE metadata, which S3 Vectors caps at 2048 bytes combined per vector — a
+      // single chunk of dense-UTF-8 (Korean) HTML content blows past that easily and the whole
+      // document fails ingestion with "Filterable metadata must have at most 2048 bytes".
+      // AMAZON_BEDROCK_TEXT alone wasn't enough: confirmed live (2026-08-09) that most guide
+      // docs still failed with only it excluded — inspecting the successfully-written vectors
+      // directly (`s3vectors list-vectors --return-metadata`) showed AMAZON_BEDROCK_METADATA is
+      // a second, separate reserved key Bedrock always writes. AWS's own console instructions
+      // for this exact setup (docs.aws.amazon.com/bedrock/latest/userguide/knowledge-base-setup.html,
+      // "Using Amazon S3 Vectors") do call out both keys — this CDK code had only copied the
+      // first one from an earlier example. Neither key is ever used as a query filter by this
+      // app (ask.ts's RetrieveCommand has no metadata filter), so excluding both only removes
+      // filterability nothing here relies on. Marking them non-filterable moves them into the
+      // separate 40KB-per-vector allowance instead. Can only be set at index creation — not
+      // updatable after the fact, so this replaces the index (and loses whatever's already
+      // indexed) on deploy; re-ingest afterward.
+      metadataConfiguration: { nonFilterableMetadataKeys: ["AMAZON_BEDROCK_TEXT", "AMAZON_BEDROCK_METADATA"] },
     });
 
     const kbRole = new iam.Role(this, "KnowledgeBaseRole", {
