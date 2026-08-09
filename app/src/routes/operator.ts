@@ -11,6 +11,7 @@ import { config } from "../config.js";
 import { invalidateGuideCache } from "../ai/ask.js";
 import { countChunksBySource } from "../ai/guide-index.js";
 import { reconcileCompletedJob } from "../ai/reindex-retry.js";
+import { GUIDE_EXTENSIONS, IMAGE_EXTENSIONS, CONTENT_TYPE_BY_EXT, extOf } from "../guide-content-type.js";
 import {
   listAllAiQueries,
   listParticipants,
@@ -66,38 +67,8 @@ const INACTIVE_PREFIX = "guide-inactive/";
 // Bedrock Knowledge Base's own supported-format/size limits (docs.aws.amazon.com/bedrock —
 // knowledge-base-ds.html) — enforced here too so a rejected upload fails fast instead of
 // silently sitting unindexed.
-const GUIDE_EXTENSIONS = new Set([".txt", ".md", ".html", ".doc", ".docx", ".csv", ".xls", ".xlsx", ".pdf"]);
-const IMAGE_EXTENSIONS = new Set([".jpeg", ".jpg", ".png"]);
 const GUIDE_MAX_BYTES = 50 * 1024 * 1024;
 const IMAGE_MAX_BYTES = Math.floor(3.75 * 1024 * 1024);
-
-// The browser's own File.type sniff is unreliable for exactly these extensions (empirically:
-// .html and .md routinely come back "" from a real browser upload depending on OS file-type
-// registration) — the client then falls back to "application/octet-stream", which Bedrock's
-// ingestion silently fails to parse (no statusReason, just permanently stuck FAILED on every
-// retry, since re-touching the S3 object never fixes its Content-Type). Since `ext` is already
-// validated against GUIDE_EXTENSIONS/IMAGE_EXTENSIONS above, deriving Content-Type from it
-// server-side — instead of trusting whatever the client sent — is correct regardless of what
-// the browser sniffed.
-const CONTENT_TYPE_BY_EXT: Record<string, string> = {
-  ".txt": "text/plain",
-  ".md": "text/markdown",
-  ".html": "text/html",
-  ".doc": "application/msword",
-  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  ".csv": "text/csv",
-  ".xls": "application/vnd.ms-excel",
-  ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  ".pdf": "application/pdf",
-  ".jpeg": "image/jpeg",
-  ".jpg": "image/jpeg",
-  ".png": "image/png",
-};
-
-function extOf(filename: string): string {
-  const i = filename.lastIndexOf(".");
-  return i === -1 ? "" : filename.slice(i).toLowerCase();
-}
 
 // participantId now comes from Cognito, which — depending on deployment — may be populated by
 // an external poller rather than this app's own HMAC derivation, so it's no longer guaranteed

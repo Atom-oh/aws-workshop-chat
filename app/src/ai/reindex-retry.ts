@@ -20,6 +20,7 @@ import {
 } from "../db/repo.js";
 import type { GuideReindexItem } from "../db/model.js";
 import { countChunksBySource } from "./guide-index.js";
+import { CONTENT_TYPE_BY_EXT, extOf } from "../guide-content-type.js";
 
 const KB_ID = process.env.BEDROCK_KB_ID;
 const KB_DATA_SOURCE_ID = process.env.BEDROCK_KB_DATA_SOURCE_ID;
@@ -51,7 +52,20 @@ async function touchGuideDocs(names: string[]) {
     names.map(async (name) => {
       const key = `${ACTIVE_PREFIX}${name}`;
       const copySource = `${GUIDE_BUCKET}/${key.split("/").map(encodeURIComponent).join("/")}`;
-      await s3.send(new CopyObjectCommand({ Bucket: GUIDE_BUCKET, CopySource: copySource, Key: key, MetadataDirective: "REPLACE" }));
+      // MetadataDirective: REPLACE means this copy does NOT carry over the source object's own
+      // Content-Type — omitting it here silently reset every touched document to
+      // "binary/octet-stream" on every single retry, which Bedrock can't parse for text-based
+      // formats. That made this retry loop self-defeating: it was the thing re-breaking a
+      // document's Content-Type on every attempt, including documents that started out correct.
+      await s3.send(
+        new CopyObjectCommand({
+          Bucket: GUIDE_BUCKET,
+          CopySource: copySource,
+          Key: key,
+          MetadataDirective: "REPLACE",
+          ContentType: CONTENT_TYPE_BY_EXT[extOf(name)],
+        }),
+      );
     }),
   );
 }
