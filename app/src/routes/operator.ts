@@ -71,6 +71,29 @@ const IMAGE_EXTENSIONS = new Set([".jpeg", ".jpg", ".png"]);
 const GUIDE_MAX_BYTES = 50 * 1024 * 1024;
 const IMAGE_MAX_BYTES = Math.floor(3.75 * 1024 * 1024);
 
+// The browser's own File.type sniff is unreliable for exactly these extensions (empirically:
+// .html and .md routinely come back "" from a real browser upload depending on OS file-type
+// registration) — the client then falls back to "application/octet-stream", which Bedrock's
+// ingestion silently fails to parse (no statusReason, just permanently stuck FAILED on every
+// retry, since re-touching the S3 object never fixes its Content-Type). Since `ext` is already
+// validated against GUIDE_EXTENSIONS/IMAGE_EXTENSIONS above, deriving Content-Type from it
+// server-side — instead of trusting whatever the client sent — is correct regardless of what
+// the browser sniffed.
+const CONTENT_TYPE_BY_EXT: Record<string, string> = {
+  ".txt": "text/plain",
+  ".md": "text/markdown",
+  ".html": "text/html",
+  ".doc": "application/msword",
+  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ".csv": "text/csv",
+  ".xls": "application/vnd.ms-excel",
+  ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ".pdf": "application/pdf",
+  ".jpeg": "image/jpeg",
+  ".jpg": "image/jpeg",
+  ".png": "image/png",
+};
+
 function extOf(filename: string): string {
   const i = filename.lastIndexOf(".");
   return i === -1 ? "" : filename.slice(i).toLowerCase();
@@ -205,7 +228,7 @@ export async function operatorRoutes(app: FastifyInstance) {
     if (!requireOperator(req, reply)) return;
     if (!GUIDE_BUCKET) return reply.code(503).send({ error: "guide bucket not configured" });
 
-    const { filename, contentType, sizeBytes } = req.body as { filename?: string; contentType?: string; sizeBytes?: number };
+    const { filename, sizeBytes } = req.body as { filename?: string; sizeBytes?: number };
     if (!filename || !sizeBytes) return reply.code(400).send({ error: "filename and sizeBytes required" });
     const ext = extOf(filename);
     const isImage = IMAGE_EXTENSIONS.has(ext);
@@ -214,13 +237,17 @@ export async function operatorRoutes(app: FastifyInstance) {
     const limit = isImage ? IMAGE_MAX_BYTES : GUIDE_MAX_BYTES;
     if (sizeBytes > limit) return reply.code(400).send({ error: `size exceeds ${limit} bytes for ${ext}` });
 
+    const contentType = CONTENT_TYPE_BY_EXT[ext];
     const key = `${ACTIVE_PREFIX}${filename}`;
     const url = await getSignedUrl(
       s3,
       new PutObjectCommand({ Bucket: GUIDE_BUCKET, Key: key, ContentType: contentType }),
       { expiresIn: 300 },
     );
-    reply.send({ url, key });
+    // The client's PUT must send this exact Content-Type header back — a presigned PutObject
+    // URL signs the header value, so any mismatch (e.g. the client still guessing from its own
+    // unreliable File.type) fails the whole upload with a signature error.
+    reply.send({ url, key, contentType });
   });
 
   app.post("/api/operator/guide-docs/uploaded", async (req, reply) => {
