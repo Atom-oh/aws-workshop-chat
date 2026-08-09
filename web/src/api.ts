@@ -155,7 +155,7 @@ export const api = {
 
   attendance: () => req<Attendance>("/api/operator/attendance"),
 
-  guideDocs: () => req<{ docs: GuideDoc[] }>("/api/operator/guide-docs"),
+  guideDocs: () => req<{ docs: GuideDoc[]; kbEnabled: boolean }>("/api/operator/guide-docs"),
   // contentType is decided server-side from the filename's extension (see routes/operator.ts) —
   // the browser's own File.type sniff is unreliable enough for .html/.md that trusting it here
   // used to produce silently-unindexable guide docs. The server's chosen value comes back so

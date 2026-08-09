@@ -486,8 +486,9 @@ function IndexStatusBadge({ status }: { status?: GuideDoc["indexStatus"] }) {
   );
 }
 
-function DocsView({ docs, reindexStatus, onUpload, onToggle, onDelete, onReindex }: {
+function DocsView({ docs, kbEnabled, reindexStatus, onUpload, onToggle, onDelete, onReindex }: {
   docs: GuideDoc[];
+  kbEnabled: boolean;
   reindexStatus: { status: string | null; startedAt?: string; attempt?: number; maxAttempts?: number; failedDocs?: string[]; nextRetryAt?: string | null };
   onUpload: (files: FileList) => void; onToggle: (key: string) => void; onDelete: (key: string) => void; onReindex: () => void;
 }) {
@@ -508,15 +509,22 @@ function DocsView({ docs, reindexStatus, onUpload, onToggle, onDelete, onReindex
         </div>
         <div style={{ fontSize: 12.5, color: COLORS.dim, maxWidth: 660 }}>{t("여기 올린 문서만 AI 도우미의 답변 근거로 주입됩니다.")}</div>
         <div style={{ display: "flex", alignItems: "flex-end", gap: 20, marginTop: 12 }}>
-          <div style={{ flex: 1, maxWidth: 420 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, color: COLORS.dim, marginBottom: 6 }}>
-              <span>{t("프롬프트 주입 사용량")}</span>
-              <span style={{ fontFamily: "ui-monospace,Menlo,monospace" }}>{(ctxBytes / 1024).toFixed(0)} KB / {(GUIDE_CONTEXT_CAP_BYTES / 1024).toFixed(0)} KB</span>
+          {/* This cap only applies in the region-fallback deploy (no Knowledge Base), where the
+              raw guide text gets injected into the prompt under GUIDE_INJECT_MAX_CHARS — with a
+              KB configured, retrieval is used instead and the cap never applies, so showing a
+              meter against it (raw HTML-inclusive file bytes vs. a plain-text char budget, at
+              that) would just be a confusing, irrelevant number. */}
+          {!kbEnabled && (
+            <div style={{ flex: 1, maxWidth: 420 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, color: COLORS.dim, marginBottom: 6 }}>
+                <span>{t("프롬프트 주입 사용량")}</span>
+                <span style={{ fontFamily: "ui-monospace,Menlo,monospace" }}>{(ctxBytes / 1024).toFixed(0)} KB / {(GUIDE_CONTEXT_CAP_BYTES / 1024).toFixed(0)} KB</span>
+              </div>
+              <div style={{ height: 6, borderRadius: 3, background: COLORS.track, overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${Math.min(100, Math.round((ctxBytes / GUIDE_CONTEXT_CAP_BYTES) * 100))}%`, background: COLORS.orange }} />
+              </div>
             </div>
-            <div style={{ height: 6, borderRadius: 3, background: COLORS.track, overflow: "hidden" }}>
-              <div style={{ height: "100%", width: `${Math.min(100, Math.round((ctxBytes / GUIDE_CONTEXT_CAP_BYTES) * 100))}%`, background: COLORS.orange }} />
-            </div>
-          </div>
+          )}
           <div>
             <div style={{ fontSize: 20, fontWeight: 700, lineHeight: 1 }}>{activeCount}</div>
             <div style={{ fontSize: 11.5, color: COLORS.dim }}>{t("사용 중 문서")}</div>
@@ -763,6 +771,7 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
   const [selectedId, setSelectedId] = useState<string | null>(initialThreadUlid);
   const [aiQueries, setAiQueries] = useState<AiQuery[]>([]);
   const [docs, setDocs] = useState<GuideDoc[]>([]);
+  const [kbEnabled, setKbEnabled] = useState(false);
   const [reindex, setReindex] = useState<{
     status: string | null; startedAt?: string; attempt?: number; maxAttempts?: number; failedDocs?: string[]; nextRetryAt?: string | null;
   }>({ status: null });
@@ -854,7 +863,7 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
     if (view !== "docs") return;
     let cancelled = false;
     const load = () => {
-      api.guideDocs().then((r) => { if (!cancelled) setDocs(r.docs); });
+      api.guideDocs().then((r) => { if (!cancelled) { setDocs(r.docs); setKbEnabled(r.kbEnabled); } });
       api.reindexStatus().then((r) => { if (!cancelled) setReindex(r); });
     };
     load();
@@ -1043,7 +1052,7 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
           {view === "ai" && <AiLogView queries={aiQueries} />}
           {view === "docs" && (
             <DocsView
-              docs={docs} reindexStatus={reindex} onUpload={uploadGuideDocs}
+              docs={docs} kbEnabled={kbEnabled} reindexStatus={reindex} onUpload={uploadGuideDocs}
               onToggle={(key) => api.toggleGuideDoc(key).then(() => api.guideDocs().then((r) => setDocs(r.docs)))}
               onDelete={(key) => api.deleteGuideDoc(key).then(() => { api.guideDocs().then((r) => setDocs(r.docs)); showToast(t("문서를 삭제했습니다")); })}
               onReindex={() => api.reindexGuideDocs().then((r) => { setReindex(r); showToast(t("재인덱싱을 시작했습니다")); }).catch((err) => showToast(err.message))}

@@ -217,11 +217,17 @@ export async function operatorRoutes(app: FastifyInstance) {
         indexStatus: indexStatus(name, active),
       };
     };
+    // Only the region-fallback deploy (no Knowledge Base) ever injects the raw guide text into
+    // the prompt under GUIDE_INJECT_MAX_CHARS (see ask.ts's buildPrompt) — with a KB configured,
+    // retrieval is used instead and that cap never applies, so the operator console shouldn't
+    // render a usage meter against it (comparing raw source-file bytes, HTML markup included,
+    // to a plain-text char budget was already a rough approximation even when it did apply).
+    const kbEnabled = !!KB_ID;
     const docs = [
       ...(active.Contents ?? []).filter((o) => o.Key !== ACTIVE_PREFIX).map((o) => toDoc(o, true)),
       ...(inactive.Contents ?? []).filter((o) => o.Key !== INACTIVE_PREFIX).map((o) => toDoc(o, false)),
     ];
-    reply.send({ docs });
+    reply.send({ docs, kbEnabled });
   });
 
   app.post("/api/operator/guide-docs/presign", async (req, reply) => {
