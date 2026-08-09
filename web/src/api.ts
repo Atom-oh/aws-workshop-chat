@@ -156,10 +156,14 @@ export const api = {
   attendance: () => req<Attendance>("/api/operator/attendance"),
 
   guideDocs: () => req<{ docs: GuideDoc[] }>("/api/operator/guide-docs"),
-  presignGuideDoc: (filename: string, contentType: string, sizeBytes: number) =>
-    req<{ url: string; key: string }>("/api/operator/guide-docs/presign", {
+  // contentType is decided server-side from the filename's extension (see routes/operator.ts) —
+  // the browser's own File.type sniff is unreliable enough for .html/.md that trusting it here
+  // used to produce silently-unindexable guide docs. The server's chosen value comes back so
+  // the PUT below can match exactly what the presigned URL signed.
+  presignGuideDoc: (filename: string, sizeBytes: number) =>
+    req<{ url: string; key: string; contentType: string }>("/api/operator/guide-docs/presign", {
       method: "POST",
-      body: JSON.stringify({ filename, contentType, sizeBytes }),
+      body: JSON.stringify({ filename, sizeBytes }),
     }),
   markGuideDocUploaded: () => req("/api/operator/guide-docs/uploaded", { method: "POST" }),
   deleteGuideDoc: (key: string) => req(`/api/operator/guide-docs?key=${encodeURIComponent(key)}`, { method: "DELETE" }),

@@ -883,8 +883,9 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
   async function uploadGuideDocs(files: FileList) {
     for (const file of Array.from(files)) {
       try {
-        const { url } = await api.presignGuideDoc(file.name, file.type || "application/octet-stream", file.size);
-        await fetch(url, { method: "PUT", body: file, headers: { "Content-Type": file.type || "application/octet-stream" } });
+        const { url, contentType } = await api.presignGuideDoc(file.name, file.size);
+        const res = await fetch(url, { method: "PUT", body: file, headers: { "Content-Type": contentType } });
+        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       } catch (err: any) {
         showToast(`${file.name} ${t("업로드 실패")}: ${err.message}`);
         continue;
