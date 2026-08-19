@@ -10,11 +10,24 @@ export function filenameFromKey(key: string): string {
 }
 
 const IMAGE_EXT = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp"]);
+const PDF_EXT = new Set([".pdf"]);
+const HTML_EXT = new Set([".html", ".htm"]);
+
+function extOf(key: string): string {
+  const name = filenameFromKey(key).toLowerCase();
+  return name.slice(name.lastIndexOf("."));
+}
 
 export function isImageKey(key: string): boolean {
-  const name = filenameFromKey(key).toLowerCase();
-  const ext = name.slice(name.lastIndexOf("."));
-  return IMAGE_EXT.has(ext);
+  return IMAGE_EXT.has(extOf(key));
+}
+
+export function isPdfKey(key: string): boolean {
+  return PDF_EXT.has(extOf(key));
+}
+
+export function isHtmlKey(key: string): boolean {
+  return HTML_EXT.has(extOf(key));
 }
 
 export function formatBytes(n: number): string {

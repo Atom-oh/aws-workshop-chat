@@ -19,6 +19,7 @@ const ALLOWED_MIME: Record<string, number> = {
   "application/pdf": 25 * 1024 * 1024,
   "text/plain": 5 * 1024 * 1024,
   "text/csv": 5 * 1024 * 1024,
+  "text/html": 5 * 1024 * 1024,
   "application/zip": 25 * 1024 * 1024,
   "application/msword": 25 * 1024 * 1024,
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document": 25 * 1024 * 1024,
@@ -65,5 +66,36 @@ export async function uploadRoutes(app: FastifyInstance) {
     if (!key || !key.startsWith("media/")) return reply.code(400).send({ error: "invalid key" });
     const url = await getSignedUrl(s3, new GetObjectCommand({ Bucket: MEDIA_BUCKET, Key: key }), { expiresIn: 300 });
     reply.send({ url });
+  });
+
+  // HTML attachments are previewed inline (Attachment.tsx) via a sandboxed <iframe>, not the
+  // presigned S3 URL above — two reasons:
+  //  1. The media bucket's CORS policy only allows PUT (for uploads), not GET, so a client-side
+  //     fetch() of the S3 URL is blocked by CORS; streaming it through this same-origin route
+  //     sidesteps that entirely.
+  //  2. Uploaded HTML rarely declares its own charset, and S3 stores whatever Content-Type the
+  //     uploader's browser guessed (bare "text/html", no charset param) — left alone, the
+  //     browser's encoding-sniffing mangles non-ASCII text in a Korean-first app. Proxying lets
+  //     us force `charset=utf-8` ourselves.
+  // The Content-Security-Policy header is defense-in-depth: this route must NEVER be linked to
+  // directly (only ever set as the sandboxed iframe's src) — unlike the cross-origin S3 URL,
+  // a direct top-level navigation here would run in the app's own origin with the viewer's
+  // session cookie, so an uploaded HTML file could otherwise steal it. `sandbox` on the response
+  // blocks scripts/forms/navigation the same way the iframe's own `sandbox=""` attribute does,
+  // even if something ever did link to this URL directly.
+  app.get("/api/media/html", async (req, reply) => {
+    const session = requireSession(req, reply);
+    if (!session) return;
+    if (!MEDIA_BUCKET) return reply.code(503).send({ error: "media bucket not configured" });
+    const key = (req.query as any)?.key as string | undefined;
+    if (!key || !key.startsWith("media/") || !/\.html?$/i.test(key)) return reply.code(400).send({ error: "invalid key" });
+    const obj = await s3.send(new GetObjectCommand({ Bucket: MEDIA_BUCKET, Key: key }));
+    // transformToString(), not reply.send(obj.Body) — piping the SDK's raw Readable through
+    // Fastify silently produced an empty (Content-Length: 0) response; decoding to a string
+    // ourselves sidesteps that AND guarantees the utf-8 read this route exists for.
+    const text = await obj.Body?.transformToString("utf-8");
+    reply.header("Content-Security-Policy", "sandbox");
+    reply.type("text/html; charset=utf-8");
+    reply.send(text ?? "");
   });
 }

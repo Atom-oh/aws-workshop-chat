@@ -220,9 +220,9 @@ function QuestionsView({
 
 // ---------- Thread panel ----------
 
-function ThreadPanel({ channel, ulid, message, onClose, width, onResize, initialMsgUlid, onCopyLink }: {
+function ThreadPanel({ channel, ulid, message, onClose, width, onResize, initialMsgUlid, onCopyLink, onError }: {
   channel: string; ulid: string; message: Message; onClose: () => void; width: number; onResize: (deltaX: number) => void;
-  initialMsgUlid?: string | null; onCopyLink: (ulid: string) => void;
+  initialMsgUlid?: string | null; onCopyLink: (ulid: string) => void; onError: (message: string) => void;
 }) {
   const { locale, t } = useLocale();
   const [replies, setReplies] = useState<Message[]>([]);
@@ -241,10 +241,14 @@ function ThreadPanel({ channel, ulid, message, onClose, width, onResize, initial
 
   async function send() {
     if (!draft.trim() && attachments.length === 0) return;
-    await api.postMessage(channel, draft, "msg", ulid, attachments.map((a) => a.key));
-    setDraft("");
-    setAttachments([]);
-    load();
+    try {
+      await api.postMessage(channel, draft, "msg", ulid, attachments.map((a) => a.key));
+      setDraft("");
+      setAttachments([]);
+      load();
+    } catch (err: any) {
+      onError(err.message);
+    }
   }
 
   return (
@@ -292,7 +296,11 @@ function ThreadPanel({ channel, ulid, message, onClose, width, onResize, initial
       <div style={{ flex: "none", padding: "12px 18px 16px" }}>
         <Composer
           value={draft} onChange={setDraft} onSend={send} placeholder={t("운영자로 답변…")}
-          onAttachFiles={(files) => Promise.all(Array.from(files).map(uploadFile)).then((added) => setAttachments((a) => [...a, ...added]))}
+          onAttachFiles={(files) =>
+            Promise.all(Array.from(files).map(uploadFile))
+              .then((added) => setAttachments((a) => [...a, ...added]))
+              .catch((err) => onError(err.message))
+          }
           extra={attachments.length > 0 && <AttachmentChips attachments={attachments} onRemove={(key) => setAttachments((a) => a.filter((x) => x.key !== key))} />}
         />
       </div>
@@ -303,9 +311,9 @@ function ThreadPanel({ channel, ulid, message, onClose, width, onResize, initial
 
 // ---------- Channel view ----------
 
-function ChannelView({ slug, name, archived, onOpenThread, initialThreadUlid, initialMsgUlid, onCopyLink }: {
+function ChannelView({ slug, name, archived, onOpenThread, initialThreadUlid, initialMsgUlid, onCopyLink, onError }: {
   slug: string; name: string; archived: boolean; onOpenThread: (m: Message) => void;
-  initialThreadUlid?: string | null; initialMsgUlid?: string | null; onCopyLink: (ulid: string) => void;
+  initialThreadUlid?: string | null; initialMsgUlid?: string | null; onCopyLink: (ulid: string) => void; onError: (message: string) => void;
 }) {
   const { locale, t } = useLocale();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -345,9 +353,13 @@ function ChannelView({ slug, name, archived, onOpenThread, initialThreadUlid, in
 
   async function send() {
     if (!draft.trim() && attachments.length === 0) return;
-    await api.postMessage(slug, draft, "msg", undefined, attachments.map((a) => a.key));
-    setDraft("");
-    setAttachments([]);
+    try {
+      await api.postMessage(slug, draft, "msg", undefined, attachments.map((a) => a.key));
+      setDraft("");
+      setAttachments([]);
+    } catch (err: any) {
+      onError(err.message);
+    }
   }
 
   return (
@@ -401,7 +413,11 @@ function ChannelView({ slug, name, archived, onOpenThread, initialThreadUlid, in
         ) : (
           <Composer
             value={draft} onChange={setDraft} onSend={send} placeholder={locale === "en" ? `Message #${name}` : `#${name} 에 메시지 보내기`}
-            onAttachFiles={(files) => Promise.all(Array.from(files).map(uploadFile)).then((added) => setAttachments((a) => [...a, ...added]))}
+            onAttachFiles={(files) =>
+              Promise.all(Array.from(files).map(uploadFile))
+                .then((added) => setAttachments((a) => [...a, ...added]))
+                .catch((err) => onError(err.message))
+            }
             extra={attachments.length > 0 && <AttachmentChips attachments={attachments} onRemove={(key) => setAttachments((a) => a.filter((x) => x.key !== key))} />}
           />
         )}
@@ -1047,6 +1063,7 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
               slug={activeChannel} name={channelName(activeChannel)} archived={channelArchived(activeChannel)} onOpenThread={setChannelThread}
               initialThreadUlid={initialThreadUlid} initialMsgUlid={initialMsgUlid}
               onCopyLink={(ulid) => copyLink(buildMessageLink({ view: "channel", channel: activeChannel, msg: ulid }))}
+              onError={showToast}
             />
           )}
           {view === "ai" && <AiLogView queries={aiQueries} />}
@@ -1083,6 +1100,7 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
             channel={selected.channel} ulid={selected.sk.replace("MSG#", "")} message={selected} onClose={() => setSelectedId(null)} width={threadWidth} onResize={resizeThread}
             initialMsgUlid={initialMsgUlid}
             onCopyLink={(msgUlid) => copyLink(buildMessageLink({ view: "questions", thread: selectedId ?? undefined, msg: msgUlid }))}
+            onError={showToast}
           />
         )}
         {channelThread && view === "channel" && (
@@ -1090,6 +1108,7 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
             channel={channelThread.channel} ulid={channelThread.sk.replace("MSG#", "")} message={channelThread} onClose={() => setChannelThread(null)} width={threadWidth} onResize={resizeThread}
             initialMsgUlid={initialMsgUlid}
             onCopyLink={(msgUlid) => copyLink(buildMessageLink({ view: "channel", channel: activeChannel, thread: channelThread.sk.replace("MSG#", ""), msg: msgUlid }))}
+            onError={showToast}
           />
         )}
       </div>
