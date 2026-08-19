@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { upload } from "./api";
-import { filenameFromKey, isImageKey } from "./media";
+import { filenameFromKey, isImageKey, isPdfKey, isHtmlKey } from "./media";
 import { COLORS } from "./theme";
 
 // Presigned GET URLs are short-lived (300s) and the media bucket has no public read, so every
@@ -20,6 +20,14 @@ export default function Attachment({ mediaKey }: { mediaKey: string }) {
   const [url, setUrl] = useState<string | null>(null);
   const name = filenameFromKey(mediaKey);
   const image = isImageKey(mediaKey);
+  const pdf = isPdfKey(mediaKey);
+  const html = isHtmlKey(mediaKey);
+  // Same-origin proxy (app/src/routes/upload.ts) rather than the presigned S3 URL used for
+  // everything else — the media bucket's CORS policy only allows PUT, and S3 stores whatever
+  // charset-less Content-Type the uploader's browser guessed, which mangles non-ASCII text in
+  // this Korean-first app if the iframe navigates straight to it. Only ever used as the
+  // sandboxed iframe's src below, never for the plain download link.
+  const htmlPreviewSrc = html ? `/api/media/html?key=${encodeURIComponent(mediaKey)}` : undefined;
 
   useEffect(() => {
     resolveUrl(mediaKey).then(setUrl).catch(() => setUrl(null));
@@ -39,6 +47,34 @@ export default function Attachment({ mediaKey }: { mediaKey: string }) {
         ) : (
           <div style={{ height: 120, borderRadius: 8, background: "rgba(255,255,255,.06)" }} />
         )}
+      </div>
+    );
+  }
+
+  if (pdf || html) {
+    const ready = pdf ? !!url : true;
+    return (
+      <div style={{ marginTop: 8, maxWidth: 480 }}>
+        {ready ? (
+          <iframe
+            src={html ? htmlPreviewSrc : url!}
+            title={name}
+            // HTML attachments are participant-uploaded and untrusted — an empty sandbox blocks
+            // script execution, form submission, and top-level navigation so a malicious upload
+            // can't act with this page's origin. PDFs have no scripting surface, so this is a
+            // no-op restriction for them.
+            sandbox={html ? "" : undefined}
+            style={{ width: "100%", height: 360, border: `1px solid ${COLORS.border}`, borderRadius: 8, background: "#fff" }}
+          />
+        ) : (
+          <div style={{ height: 360, borderRadius: 8, background: "rgba(255,255,255,.06)" }} />
+        )}
+        <div
+          onClick={download}
+          style={{ marginTop: 4, display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 12, color: COLORS.dim }}
+        >
+          📎 {name}
+        </div>
       </div>
     );
   }

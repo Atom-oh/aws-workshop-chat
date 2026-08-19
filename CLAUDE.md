@@ -14,6 +14,21 @@ covers what a future session needs to move fast, not why every decision was made
 **Not** a permanently-hosted product, **not** tied to Workshop Studio's account-vending
 (participants are synthetic 12-digit IDs, not real AWS accounts), **not** a video platform.
 
+## Language policy
+
+- Write everything you author into a file — code, comments, commit messages, docs, this file
+  itself — in English. This is a non-ASCII-encoding safety rule as much as a style one: this
+  session already lost time to a real mojibake bug (an uploaded HTML attachment's Korean text
+  rendered garbled because of a missing charset, see `GET /api/media/html` in
+  `app/src/routes/upload.ts`) — keep authored file content ASCII-only to avoid adding more
+  surface for that class of bug.
+- This does **not** apply to the app's own Korean-language content that exists on purpose —
+  UI copy (`web/src/i18n.tsx`), the lab guide under `guide/`, or any string a participant/operator
+  actually sees in the product. Only what *you* write when not asked to write Korean product
+  content.
+- Talk to the user in Korean (한국어) in chat — this rule is about file content, not
+  conversation.
+
 ## Commands
 
 npm workspaces monorepo (`app`, `infra`, `web`) — most commands run inside one workspace.
@@ -28,7 +43,7 @@ docker compose up --build
 cd app
 npm run dev              # tsx watch src/server.ts
 npm run build            # tsc -p tsconfig.json
-npm test                 # tsx --test test/*.test.ts — all 4 suites
+npm test                 # tsx --test test/*.test.ts — all 5 suites
 npx tsx --test test/xlsx.test.ts                              # one suite
 npx tsx --test --test-name-pattern="idempotent" test/*.test.ts # by test name
 
@@ -63,10 +78,18 @@ Every deploy rebuilds and pushes the container image automatically
   single Fargate task" section before ever proposing horizontal scaling here).
 - `web/` — React 18 + Vite SPA, built to `web/dist/` and served by the same Fastify process
   (`app/src/server.ts` registers `@fastify/static` against `../../web/dist`).
-- `infra/` — CDK v2 stack (`infra/lib/workshop-chat-stack.ts`) plus a second, separate stack
-  (`infra/lib/waf-stack.ts`) that exists ONLY because CloudFront-scoped WAFv2 WebACLs can only be
-  created via the `us-east-1` API endpoint regardless of where the main stack deploys — CDK
-  cross-region references (`crossRegionReferences: true`) wire the two together.
+- `infra/` — CDK v2, three stacks wired together via `crossRegionReferences: true`
+  (`infra/bin/app.ts`), each pinned to whichever region its AWS API actually requires:
+  - `workshop-chat-stack.ts` — everything else (ECS, ALB, CloudFront, DynamoDB, Cognito), in the
+    CLI's resolved region.
+  - `waf-stack.ts` — pinned to `us-east-1` because CloudFront-scoped WAFv2 WebACLs can only be
+    created via that region's API endpoint, regardless of where the main stack deploys.
+  - `bedrock-stack.ts` — the Knowledge Base, S3 Vectors, and (when the KB is enabled) the guide
+    bucket itself, since a KB's S3 data source must share the KB's region. Pinned to
+    `--context bedrockRegion` (defaults to the main stack's region) for environments — an AWS
+    Workshop Studio participant account, for example — where Bedrock is only available in one
+    specific region (usually `us-east-1`) while the rest of the app deploys nearer participants.
+    Skipped entirely when `enableKnowledgeBase=false`.
 
 ### DynamoDB: one table, no GSIs
 
@@ -81,12 +104,18 @@ any one channel's Messages), and a naive single Query/Scan silently truncates pa
 
 ### Auth: two independent credential paths that happen to share one secret
 
-- **Cognito-backed** (`app/src/auth/cognito.ts`): the operator account and the "individual
-  password" login fallback. Role is determined by **Cognito group membership**
-  (`AdminListGroupsForUser`, groups `admin`/`participant`), never by comparing a username string.
+- **Cognito-backed** (`app/src/auth/cognito.ts`, single `POST /api/login/id` route in
+  `app/src/routes/auth.ts`): typing an ID + password, for both the operator and participants.
+  Role is determined by **Cognito group membership** (`AdminListGroupsForUser`, groups
+  `admin`/`participant`), never by comparing a username string.
 - **App-signed session tokens** (`app/src/auth/token.ts`, `app/src/auth/session.ts`): the
-  one-click `/j` join link and the shared-passphrase fallback. These never touch Cognito at
-  request time — no IdP round-trip for a disposable 3-day app.
+  one-click `/j?t=<token>` join link. Never touches Cognito at request time — no IdP round-trip
+  for a disposable 3-day app.
+
+There is no passphrase-based login path despite `config.participantPassphrase` still existing —
+it's only ever read to be *echoed back* in the operator roster response
+(`app/src/routes/operator.ts`), a leftover from a dropped design. Every real login goes through
+one of the two paths above.
 
 Both paths derive from the same `CredentialSeed` secret (Secrets Manager): the
 credentials-provisioner Lambda (`infra/lambda/credentials-handler.ts`) uses it to derive every
@@ -135,10 +164,20 @@ custom rule: a fenced ` ```mermaid ` block renders as an actual diagram
 a mermaid block actually appears — a static import balloons the main bundle from ~200KB to ~1MB
 because it bundles a renderer per diagram type.
 
-File attachments (`web/src/Attachment.tsx`, `web/src/media.ts`): the media S3 bucket is private,
+File attachments (`web/src/Attachment.tsx`, `web/src/media.tsx`): the media S3 bucket is private,
 so every render/download goes through a fresh short-lived presigned GET
 (`GET /api/media/url`) rather than a stored URL. The filename rides inside the S3 key itself
-(`media/<participantId>/<uuid>__<filename>`) — no separate metadata store.
+(`media/<participantId>/<uuid>__<filename>`) — no separate metadata store. Images and PDFs
+preview inline using that presigned URL directly. HTML attachments preview differently, through
+a same-origin proxy (`GET /api/media/html`, `app/src/routes/upload.ts`) instead: the media
+bucket's CORS policy only allows `PUT` (for uploads), so a client-side `fetch()` of the presigned
+URL is CORS-blocked, and S3 stores whatever charset-less `Content-Type` the uploader's browser
+guessed, which mangles non-ASCII text in this Korean-first app if rendered as-is. The proxy
+route decodes as UTF-8 and forces the charset itself. That route must never be linked to
+directly — only ever set as the `sandbox=""` iframe's `src` in `Attachment.tsx` — since (unlike
+the cross-origin S3 URL) a direct top-level hit would run in the app's own origin with the
+viewer's session cookie; it sends `Content-Security-Policy: sandbox` as defense-in-depth against
+exactly that.
 
 ### Region/model caveats worth knowing before touching `infra/` or `ask.ts`
 
@@ -147,3 +186,20 @@ so every render/download goes through a fresh short-lived presigned GET
   modelDetails.inferenceTypesSupported` before hardcoding a model ID anywhere.
 - S3 Vectors isn't available in every region; `enableKnowledgeBase=false` at deploy time switches
   to the prompt-injection fallback described above.
+
+### Guide-doc Content-Type
+
+`app/src/guide-content-type.ts` derives Content-Type from the filename extension and is shared by
+both the operator's upload route and `ai/reindex-retry.ts` — a browser's `File.type` sniff and
+S3's no-Content-Type default (`binary/octet-stream`) are both unreliable, and Bedrock's Knowledge
+Base ingestion silently skips text-based docs it can't identify. Any new code path that writes to
+the guide bucket must go through this helper rather than trusting a caller-supplied content type.
+
+### Don't resurrect the SSM/Organizations design
+
+`docs/ssm-integration.md` documents a central-poller + AWS Organizations + cross-account
+`AssumeRole` design from the original spec (`docs/SPEC-workshop-chat.md` §5) — **explicitly not
+implemented**. This repo generates synthetic participant IDs locally instead
+(`app/src/auth/credentials.ts`) and distributes join links via the operator console
+(`GET /api/operator/roster`) or `scripts/gen-links.ts`. Don't treat either spec doc as describing
+current behavior; `docs/DATA_MODEL.md` and this file are the accurate references.

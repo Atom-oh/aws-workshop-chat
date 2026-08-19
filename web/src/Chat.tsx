@@ -147,7 +147,11 @@ function ThreadPanel({ slug, message, onClose, width, onResize, initialMsgUlid, 
           onChange={setDraft}
           onSend={send}
           placeholder={t("답글 작성")}
-          onAttachFiles={(files) => Promise.all(Array.from(files).map(uploadFile)).then((added) => setAttachments((a) => [...a, ...added]))}
+          onAttachFiles={(files) =>
+            Promise.all(Array.from(files).map(uploadFile))
+              .then((added) => setAttachments((a) => [...a, ...added]))
+              .catch((err) => onError(err.message))
+          }
           extra={attachments.length > 0 && <AttachmentChips attachments={attachments} onRemove={(key) => setAttachments((a) => a.filter((x) => x.key !== key))} />}
         />
       </div>
@@ -364,8 +368,11 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
   }
 
   async function attachFiles(files: FileList) {
-    const uploaded = await Promise.all(Array.from(files).map(uploadFile));
-    setAttachments((a) => [...a, ...uploaded]);
+    const results = await Promise.allSettled(Array.from(files).map(uploadFile));
+    const uploaded = results.filter((r): r is PromiseFulfilledResult<PendingAttachment> => r.status === "fulfilled").map((r) => r.value);
+    if (uploaded.length) setAttachments((a) => [...a, ...uploaded]);
+    const failed = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+    if (failed.length) showToast(failed.map((r) => r.reason?.message ?? String(r.reason)).join(" · "));
   }
 
   async function onPaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
@@ -373,8 +380,12 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
     if (!item) return;
     const file = item.getAsFile();
     if (!file) return;
-    const added = await uploadFile(file);
-    setAttachments((a) => [...a, added]);
+    try {
+      const added = await uploadFile(file);
+      setAttachments((a) => [...a, added]);
+    } catch (err: any) {
+      showToast(err.message);
+    }
   }
 
   async function postAsAnnouncement(m: Message) {
