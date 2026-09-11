@@ -26,7 +26,7 @@ CloudFront (+ WAF rate limit)
         - REST API
         - in-process WebSocket broadcast hub
 DynamoDB (single table, on-demand)         — all app state
-Cognito User Pool                          — participant + credential source of truth
+Cognito User Pool                          - operators always; participants in cognito mode
 S3: media / guide / exports (all auto-deleted with the stack)
 Bedrock Knowledge Base (S3 Vectors) + Converse — AI chat over the lab guide
 Secrets Manager                            — one seed, dual-purpose (see below)
@@ -57,19 +57,34 @@ connections this app depends on. Lambda-per-connection (API Gateway WebSocket) w
 connection-state tracking in DynamoDB that a single long-running process gets for free. One
 Fargate task behind an ALB is the smallest thing that actually holds a WebSocket open.
 
-### Why Cognito is the credential source but not the request-time gate
+### Participant authentication modes
 
-Cognito remains the deploy-time source of truth for participant credentials (created idempotently
-by the credentials-provisioner Lambda, `infra/lambda/credentials-handler.ts`). But the one-click
-`/j` join link uses the app's **own** HMAC-signed session tokens, not a Cognito JWT round-trip —
-see `app/src/auth/token.ts` and `app/src/auth/session.ts`.
-Re-verifying against Cognito on every page load would add IdP latency for zero benefit on a
-disposable, 3-day app. A **single secret** does both jobs: the credentials-provisioner Lambda uses
-it to *derive* each participant's Cognito ID/password, and the app container reuses the exact same
-value to *sign* join tokens — so the operator console can re-derive any participant's ID and mint
-their join link on demand, with no separate roster to keep in sync (`infra/lib/workshop-chat-stack.ts`,
-the `CredentialSeed` secret). Cognito's own `AdminInitiateAuth` is still wired up and used for the
-"type your individually-issued password" fallback path (`app/src/auth/cognito.ts`).
+`PARTICIPANT_AUTH_MODE=cognito|nickname` selects how participants enter. CDK deployments and
+the backend default to `cognito`. Operators always sign in with Cognito at `<AppUrl>/operator`,
+including when participants use nicknames.
+
+- **`cognito` (default):** participants receive individually issued IDs/passwords or signed
+  `/j` join links. The credentials-provisioner Lambda creates their Cognito accounts
+  idempotently. One `CredentialSeed` secret derives those credentials and signs app sessions
+  and join tokens, so the operator console can regenerate links without a separate roster.
+  Password login checks Cognito; signed links and subsequent app sessions do not require a
+  Cognito round-trip on every request.
+- **`nickname`:** share the same public `AppUrl` with everyone. Participants enter a nickname
+  without a Cognito account or password, like joining a Kahoot session. The app assigns an
+  anonymous participant identity and keeps it in a signed session cookie. Reloading in the
+  same browser preserves that identity while the session remains valid. After logout, cookie
+  removal/expiry, or joining from a new browser, joining again creates a new identity, even
+  with the same nickname; a nickname is not a recovery credential.
+
+Nickname mode keeps the Cognito pool, client, groups, secrets, and operator provisioning.
+Only the credentials Custom Resource's `ParticipantCount` becomes `0`, skipping participant
+account provisioning. Existing participant accounts are not deleted when switching modes.
+The task's `PARTICIPANT_COUNT` remains the anticipated headcount: nickname attendance uses
+actual app registrations against that target, not pre-created Cognito users. The operator
+roster provides the shared public app link instead of individual credential links.
+
+Participant sessions and signed links must match the active mode; switching back to Cognito
+rejects existing nickname sessions. Operator sessions work in both modes.
 
 ### Region fallback for AI chat
 
@@ -82,15 +97,11 @@ logged once at container startup.
 
 ## Identity and privacy — deviation from the original spec
 
-Participant identities here are **synthetic 12-digit numbers generated at deploy time**, not real
-AWS account IDs (Organizations discovery and cross-account AssumeRole were dropped — see below).
-Because of that, the original spec's login-screen notice ("운영자는 참가자의 AWS 계정 ID를 확인할
-수 있습니다") would be false, so it's been changed to:
-
-> 참가자 간에는 익명입니다. 운영자는 참가자에게 발급된 참가자 ID를 확인할 수 있습니다.
-
-No email, name, or real AWS account ID is ever collected or stored. The xlsx export's `accountId`
-columns are renamed `participantId` throughout for the same reason.
+Participant identities are app-specific, not real AWS account IDs. Cognito mode derives
+synthetic participant IDs during provisioning; nickname mode creates anonymous IDs on entry
+and stores the chosen display nickname. No email or real AWS account ID is required. Use a
+workshop nickname rather than a real name. Operators can see each issued participant ID.
+The xlsx export uses `participantId` columns for the same reason.
 
 ## Deploy
 
@@ -98,7 +109,7 @@ columns are renamed `participantId` throughout for the same reason.
 cd infra
 npm install
 npx cdk bootstrap   # once per account/region, if not already done
-npx cdk deploy \
+npx cdk deploy --all \
   --context workshopName="woori-1030" \
   --context scale="large" \
   --context bedrockModelId="global.anthropic.claude-sonnet-5" \
@@ -107,6 +118,32 @@ npx cdk deploy \
   --context participantCount="120" \
   --context enableKnowledgeBase="true"
 ```
+
+That command retains the default Cognito participant flow. To enable nickname entry, use the
+same deployment options with the environment variable:
+
+```bash
+# Run from infra/.
+PARTICIPANT_AUTH_MODE=nickname npx cdk deploy --all \
+  --context workshopName="woori-1030" \
+  --context scale="large" \
+  --context bedrockModelId="global.anthropic.claude-sonnet-5" \
+  --context adminUsername="admin@ws" \
+  --context participantPassphrase="woori-1030" \
+  --context participantCount="120" \
+  --context enableKnowledgeBase="true"
+```
+
+Optional `--context participantAuthMode="nickname"` (or `"cognito"`) takes precedence over
+`PARTICIPANT_AUTH_MODE`. If neither is provided, CDK uses `cognito`; unsupported values fail
+before resource creation. Use the selected mode on subsequent deploys as well.
+`bedrockModelId` and `participantPassphrase` remain required context options in both modes.
+The legacy `participantPassphrase` setting does not select an auth mode or enable passphrase
+login.
+
+CDK sets the task's `PUBLIC_APP_URL` to the HTTPS CloudFront address or configured custom
+domain. The nickname roster uses that public URL for its shared link, even though the ALB
+forwards HTTP to the application.
 
 The container image is built and pushed by CDK itself (`ContainerImage.fromAsset`, built for
 **arm64** to match the task's `runtimePlatform`) — there's no separate ECR push step, and no
@@ -140,27 +177,24 @@ stays in the main stack's own region, unchanged from before.
 
 ### Operator login
 
-The one operator account (`adminUsername`, default `admin@ws`) is a real Cognito user,
-provisioned at deploy time with a random password that never appears in the stack template.
-Retrieve it with the `OperatorCredentialsCommand` output:
+In both participant modes, open `<AppUrl>/operator` and use the operator's Cognito credentials.
+The one operator account (`adminUsername`, default `admin@ws`) is provisioned at deploy time
+with a random password that never appears in the stack template. Retrieve it with the
+`OperatorCredentialsCommand` output:
 
 ```bash
 aws secretsmanager get-secret-value --region <region> --secret-id <OperatorPassword arn> \
   --query SecretString --output text
 ```
 
-Every `cdk deploy` re-syncs this password to whatever's currently in Secrets Manager (unlike
-participant provisioning, which only fills in the delta) — useful after a manual rotation.
+Whenever the credentials Custom Resource runs, it re-syncs this password to the current
+Secrets Manager value. Participant provisioning in Cognito mode only fills in the delta.
 
 **Role comes from Cognito group membership, not a hardcoded username.** The credentials
-provisioner puts the operator account in the `admin` group and every participant account in the
-`participant` group at creation time; a single login form/endpoint (`/api/login/id`) serves
-both — it checks group membership (`AdminListGroupsForUser`) after the password check succeeds
-to decide the role, rather than comparing the username against
-`adminUsername` directly. A correct password for a user in the wrong group is rejected. This
-only applies to that one Cognito-backed login path — the one-click `/j` join link never touches
-Cognito at request time (see "Why Cognito is the credential source but not the request-time
-gate" above), so it's unaffected.
+provisioner puts the operator in the `admin` group and, in Cognito mode, participant accounts
+in the `participant` group. The Cognito login endpoint (`/api/login/id`) checks group
+membership (`AdminListGroupsForUser`) after verifying the password. A user in the wrong group
+is rejected. Nickname entry grants only participant access; it never grants the operator role.
 
 ### Custom domain
 
@@ -196,18 +230,24 @@ failure) — check that if a document doesn't show up in AI answers.
 
 ### Raising participant count mid-workshop
 
-Late-joining teams are handled by simply re-deploying with a higher `participantCount` — the
-credentials provisioner is idempotent (proven in `app/test/credentials.test.ts`): it only creates
-the delta, never touches or duplicates existing participants.
+In Cognito mode, re-deploy with a higher `participantCount` to provision late-joining teams.
+The credentials provisioner is idempotent (proven in `app/test/credentials.test.ts`): it only
+creates the delta and does not duplicate existing participants.
+
+In nickname mode, participants register when they join through the shared public app link.
+`participantCount` is the target headcount, not a list of pre-created users or an admission
+limit. Raising it updates that target while the credentials Custom Resource still receives
+`ParticipantCount: 0`. Actual registrations can exceed the target, including when someone
+logs out and rejoins with a new anonymous identity.
 
 ## Operate
 
 Open `<AppUrl>/operator` and log in with the operator username/password (see "Operator login"
 above). From there:
 
-- **참가자 조인 링크** — one row per participant with a ready-to-click join URL + CSV download.
-  Distributing this list (via SSM broadcast, chat, however your workshop platform prefers) is
-  outside this repo's scope; generating it is not.
+- **Participant join links** - Cognito mode provides individual join URLs and a CSV download.
+  Nickname mode provides one shared public app link and reports actual registrants against
+  the target headcount. Distribute the appropriate link(s) through your workshop channel.
 - **미해결 질문** — every open question, auto-refreshing every 15s. This is the screen an
   operator should have open, not the chat timeline — "who's stuck right now" is the whole point.
 - **랩 스텝** — one selector; every question and AI query gets auto-tagged with whatever's
@@ -233,14 +273,24 @@ of whether this app is reachable.
 docker compose up --build
 ```
 
-Runs the full stack against DynamoDB Local — chat, threads, upvotes, resolve, moderation, media
-presign, xlsx export, and lab-step tagging are all testable with **no AWS account**. The one
-exception is AI chat: Bedrock has no local emulator, so `/api/ai/ask` needs real AWS credentials
-exported into your shell before `docker compose up` (and a real `BEDROCK_MODEL_ID`).
+Open `http://localhost:3000` and enter a nickname. Docker Compose explicitly defaults
+`PARTICIPANT_AUTH_MODE` to `nickname`, so participant login, chat, threads, and upvotes work
+against DynamoDB Local without Cognito or an AWS account. This differs from CDK deployments
+and the backend's own default, which remain `cognito`. Override Compose with
+`PARTICIPANT_AUTH_MODE=cognito docker compose up --build` when testing Cognito participant
+login against a real pool.
 
-Login is Cognito-backed only (`/api/login/id`) — there is no passphrase fallback anymore, so
-local dev needs real AWS credentials exported into your shell (same as the AI chat exception
-above) to reach a real Cognito user pool, even just to log in and exercise chat/threads/upvotes.
+Operators still use Cognito at `http://localhost:3000/operator`. Operator-only features
+(including moderation and export) require a real Cognito user in the `admin` group. Pass the
+pool/client configuration (`COGNITO_USER_POOL_ID`, `COGNITO_CLIENT_ID`) and real AWS
+credentials into the app container to test that path. The Compose file's `local` AWS keys
+only serve DynamoDB Local; exporting real keys on the host does not replace those values.
+AI chat additionally needs a real `BEDROCK_MODEL_ID`, and S3-backed features need real bucket
+configuration and access. There is no participant passphrase login.
+
+Without `PUBLIC_APP_URL`, local nickname share links use the request protocol and host.
+Session continuity follows the same rules as a deployment: reload keeps the current identity;
+logout or a new browser creates a new identity on the next nickname join.
 
 ### Tests
 
@@ -255,6 +305,18 @@ Three suites, per the original spec's testing mandate:
 | `test/xlsx.test.ts` | The 4-sheet export produces the exact column contract, including archived-channel and silent-participant rows |
 | `test/credentials.test.ts` | Provisioning is idempotent — re-running at the same N creates nothing, raising N creates exactly the delta |
 | `test/token.test.ts` | Tampered, truncated, wrong-signature, and expired join/session tokens are all rejected |
+
+Infrastructure auth configuration can be checked offline from the repo root:
+
+```bash
+cd infra && npx tsc --noEmit
+cd ..
+node --import tsx --test infra/test/participant-auth-mode.test.ts
+```
+
+The CDK tests synthesize both modes with a fixture account and cached availability zones,
+check context precedence and invalid values, and assert the ECS settings, HTTPS share URL,
+participant provisioning count, and stable Cognito/operator resources. They do not deploy.
 
 ### Load test
 

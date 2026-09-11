@@ -286,7 +286,7 @@ async function buildPrompt(
 }
 
 export async function ask(
-  input: { participantId: string; query: string; labStep: string },
+  input: { participantId: string; displayName?: string; query: string; labStep: string },
   deps: AskDeps = defaultDeps,
 ): Promise<{ answer: string; refDocs: string[]; aiUlid: string }> {
   const { systemPrompt, refDocs } = await buildPrompt(input.query, deps);
@@ -294,6 +294,7 @@ export async function ask(
 
   const item = await recordAiQuery({
     participantId: input.participantId,
+    displayName: input.displayName,
     query: input.query,
     refDocs,
     answerSummary: text.slice(0, 500),
@@ -306,7 +307,7 @@ export async function ask(
 }
 
 export async function askStream(
-  input: { participantId: string; query: string; labStep: string },
+  input: { participantId: string; displayName?: string; query: string; labStep: string },
   onDelta: (chunk: string) => void,
   deps: AskDeps = defaultDeps,
 ): Promise<{ answer: string; refDocs: string[]; aiUlid: string }> {
@@ -315,6 +316,7 @@ export async function askStream(
 
   const item = await recordAiQuery({
     participantId: input.participantId,
+    displayName: input.displayName,
     query: input.query,
     refDocs,
     answerSummary: text.slice(0, 500),

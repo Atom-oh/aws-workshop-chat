@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, wsUrl, type AiQuery, type Attendance, type Channel, type GuideDoc, type Message, type NoShow, type Participant } from "./api";
+import { api, wsUrl, type AiQuery, type Attendance, type Channel, type GuideDoc, type Message, type NoShow, type Participant, type Roster, type RosterEntry, type RosterSource } from "./api";
 import { avatarColor, avatarInitials, displayName } from "./format";
 import Markdown from "./Markdown";
 import { COLORS } from "./theme";
@@ -91,7 +91,7 @@ function QuestionsView({
   if (filter === "top") list = [...list].sort((a, b) => b.upvotes - a.upvotes);
   else list = [...list].sort((a, b) => (a.status === b.status ? b.upvotes - a.upvotes : a.status === "open" ? -1 : 1));
   const needle = search.trim().toLowerCase();
-  if (needle) list = list.filter((m) => m.body.toLowerCase().includes(needle) || displayName(m.participantId, locale).toLowerCase().includes(needle));
+  if (needle) list = list.filter((m) => m.body.toLowerCase().includes(needle) || displayName(m.participantId, m.displayName, locale).toLowerCase().includes(needle));
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
@@ -169,7 +169,7 @@ function QuestionsView({
                         ✓ {t("해결")}
                       </span>
                     )}
-                    <span title={`${t("참가자 ID")} ${q.participantId}`} style={{ fontSize: 12.5, fontWeight: 500, color: COLORS.fg2, borderBottom: "1px dotted rgba(var(--c-w),.3)", cursor: "help" }}>{displayName(q.participantId, locale)}</span>
+                    <span title={`${t("참가자 ID")} ${q.participantId}`} style={{ fontSize: 12.5, fontWeight: 500, color: COLORS.fg2, borderBottom: "1px dotted rgba(var(--c-w),.3)", cursor: "help", overflowWrap: "anywhere" }}>{displayName(q.participantId, q.displayName, locale)}</span>
                     {showAccountIds && <span style={{ fontSize: 11.5, color: COLORS.fg4, fontFamily: "ui-monospace,Menlo,monospace" }}>{q.participantId}</span>}
                     <span style={{ fontSize: 11.5, color: COLORS.fg4 }}>#{q.channel}</span>
                     <span style={{ fontSize: 11, padding: "1px 7px", borderRadius: 6, background: COLORS.fill, color: COLORS.fg3, fontFamily: "ui-monospace,Menlo,monospace" }}>{t("step")} {q.labStep}</span>
@@ -278,7 +278,7 @@ function ThreadPanel({ channel, ulid, message, onClose, width, onResize, initial
                 </div>
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
-                    <span style={{ fontSize: 12.5, fontWeight: 500 }}>{displayName(r.participantId, locale)}</span>
+                    <span style={{ fontSize: 12.5, fontWeight: 500, overflowWrap: "anywhere" }}>{displayName(r.participantId, r.displayName, locale)}</span>
                     <span style={{ fontSize: 11, color: COLORS.fg4, fontFamily: "ui-monospace,Menlo,monospace" }}>{timeLabel(r.createdAt, locale)}</span>
                   </div>
                   <div style={{ fontSize: 13.5, lineHeight: 1.6, color: COLORS.fg2 }}>
@@ -381,7 +381,7 @@ function ChannelView({ slug, name, archived, onOpenThread, initialThreadUlid, in
               </div>
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
-                  <span style={{ fontSize: 13.5, fontWeight: 700 }}>{displayName(m.participantId, locale)}</span>
+                  <span style={{ fontSize: 13.5, fontWeight: 700, overflowWrap: "anywhere" }}>{displayName(m.participantId, m.displayName, locale)}</span>
                   <span style={{ fontSize: 11, color: COLORS.fg4, fontFamily: "ui-monospace,Menlo,monospace" }}>{timeLabel(m.createdAt, locale)}</span>
                   {m.kind === "question" && m.status === "open" && (
                     <span style={{ height: 18, padding: "0 7px", borderRadius: 6, background: "rgba(var(--c-accent-rgb),.16)", color: COLORS.orangeText, font: "700 10.5px/18px inherit" }}>{t("미해결")}</span>
@@ -452,7 +452,7 @@ function AiLogView({ queries }: { queries: AiQuery[] }) {
         {queries.map((a) => (
           <div key={a.sk} style={{ border: `1px solid ${a.feedback === "down" ? "rgba(var(--c-danger-rgb),.45)" : "rgba(var(--c-w),.09)"}`, borderRadius: 12, background: "rgba(var(--c-w),.03)", padding: "13px 15px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 9, marginBottom: 8 }}>
-              <span style={{ fontSize: 12.5, fontWeight: 500, color: "rgba(var(--c-w),.8)" }}>{displayName(a.participantId, locale)}</span>
+              <span style={{ fontSize: 12.5, fontWeight: 500, color: "rgba(var(--c-w),.8)", overflowWrap: "anywhere" }}>{displayName(a.participantId, a.displayName, locale)}</span>
               <span style={{ fontSize: 11, padding: "1px 7px", borderRadius: 6, background: "rgba(var(--c-w),.07)", color: "rgba(var(--c-w),.55)", fontFamily: "ui-monospace,Menlo,monospace" }}>{t("step")} {a.labStep}</span>
               <span style={{ fontSize: 11.5, color: "rgba(var(--c-w),.3)", fontFamily: "ui-monospace,Menlo,monospace" }}>{timeLabel(a.createdAt, locale)}</span>
               <div style={{ flex: 1 }} />
@@ -627,19 +627,24 @@ function AttendanceView({ attendance, error, onResend }: { attendance: Attendanc
   if (error) {
     return (
       <div style={{ padding: 20, color: COLORS.redText, fontSize: 13.5 }}>
-        {t("참가자 명단을 불러올 수 없습니다 (Cognito 권한 확인 필요)")}: {error}
+        {t("참가자 명단을 불러올 수 없습니다.")}: {error}
       </div>
     );
   }
   if (!attendance) return null;
+  const nicknameMode = attendance.source === "nickname";
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
       <div style={{ flex: "none", padding: "16px 20px 14px", borderBottom: `1px solid ${COLORS.border}` }}>
-        <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>{t("참여 현황 · 아직 입장 안 한 참가자")}</div>
-        <div style={{ fontSize: 12.5, color: COLORS.dim }}>{t("입장하지 않은 참가자는 조인 링크를 재전송하세요.")}</div>
+        <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>{nicknameMode ? t("참여 현황 · 닉네임 입장") : t("참여 현황 · 아직 입장 안 한 참가자")}</div>
+        <div style={{ fontSize: 12.5, color: COLORS.dim, lineHeight: 1.5 }}>
+          {nicknameMode
+            ? t("닉네임 입장은 사전 명단이 없어 미입장자를 특정할 수 없습니다. 기준 인원은 설정된 참가 목표와 입장한 게스트 수 중 큰 값입니다.")
+            : t("입장하지 않은 참가자는 조인 링크를 재전송하세요.")}
+        </div>
         <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
           <div style={{ flex: 1, padding: "12px 14px", borderRadius: 12, background: "rgba(var(--c-w),.04)", border: `1px solid ${COLORS.border}` }}>
-            <div style={{ fontSize: 11, color: COLORS.dim, marginBottom: 5 }}>{t("예상 참가자")}</div>
+            <div style={{ fontSize: 11, color: COLORS.dim, marginBottom: 5 }}>{nicknameMode ? t("기준 인원") : t("예상 참가자")}</div>
             <div style={{ fontSize: 24, fontWeight: 700 }}>{attendance.expectedCount}</div>
           </div>
           <div style={{ flex: 1, padding: "12px 14px", borderRadius: 12, background: "rgba(var(--c-w),.04)", border: `1px solid ${COLORS.border}` }}>
@@ -647,80 +652,111 @@ function AttendanceView({ attendance, error, onResend }: { attendance: Attendanc
             <div style={{ fontSize: 24, fontWeight: 700, color: COLORS.tealText }}>{attendance.joinedCount}</div>
           </div>
           <div style={{ flex: 1, padding: "12px 14px", borderRadius: 12, background: "rgba(var(--c-danger-rgb),.14)", border: "1px solid rgba(var(--c-danger-rgb),.45)" }}>
-            <div style={{ fontSize: 11, color: COLORS.redText, marginBottom: 5 }}>{t("미입장")}</div>
+            <div style={{ fontSize: 11, color: COLORS.redText, marginBottom: 5 }}>{nicknameMode ? t("목표까지 남은 인원") : t("미입장")}</div>
             <div style={{ fontSize: 24, fontWeight: 700 }}>{attendance.noShowCount}</div>
           </div>
         </div>
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: "0 20px 24px" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "150px 1fr 96px", gap: "0 14px", padding: "11px 4px", fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "rgba(var(--c-w),.35)", borderBottom: `1px solid ${COLORS.border}`, marginTop: 8 }}>
-          <div>{t("참가자 ID")}</div><div></div><div></div>
-        </div>
-        {attendance.noShows.map((n) => (
-          <div key={n.participantId} className="hover-row" style={{ display: "grid", gridTemplateColumns: "150px 1fr 96px", gap: "0 14px", alignItems: "center", padding: "11px 4px", borderBottom: "1px solid rgba(var(--c-w),.055)", fontSize: 13.5 }}>
-            <div style={{ fontFamily: "ui-monospace,Menlo,monospace", fontSize: 12.5, color: COLORS.fg2 }}>{n.participantId}</div>
-            <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, color: COLORS.redText }}>
-              <span style={{ width: 6, height: 6, borderRadius: "50%", background: COLORS.redText }} />{t("미입장")}
-            </div>
-            <div><button onClick={() => onResend(n)} className="hover-accent-border" style={{ height: 26, padding: "0 11px", border: "1px solid rgba(var(--c-w),.18)", borderRadius: 999, background: "transparent", color: COLORS.fg2, font: "500 11.5px/1 inherit", cursor: "pointer" }}>{t("링크 복사")}</button></div>
+        {nicknameMode ? (
+          <div style={{ padding: "16px 4px", color: COLORS.dim, fontSize: 13, lineHeight: 1.6 }}>
+            <p>{t("같은 닉네임도 별도 참가자로 집계됩니다.")}</p>
+            <p>{t("공용 입장 링크는 로스터에서 복사할 수 있습니다.")}</p>
           </div>
-        ))}
-        {attendance.noShows.length === 0 && <div style={{ padding: "16px 4px", color: COLORS.dim, fontSize: 13 }}>{t("모든 참가자가 입장했습니다.")}</div>}
+        ) : (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "150px 1fr 96px", gap: "0 14px", padding: "11px 4px", fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "rgba(var(--c-w),.35)", borderBottom: `1px solid ${COLORS.border}`, marginTop: 8 }}>
+              <div>{t("참가자 ID")}</div><div></div><div></div>
+            </div>
+            {attendance.noShows.map((n) => (
+              <div key={n.participantId} className="hover-row" style={{ display: "grid", gridTemplateColumns: "150px 1fr 96px", gap: "0 14px", alignItems: "center", padding: "11px 4px", borderBottom: "1px solid rgba(var(--c-w),.055)", fontSize: 13.5 }}>
+                <div style={{ fontFamily: "ui-monospace,Menlo,monospace", fontSize: 12.5, color: COLORS.fg2 }}>{n.participantId}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, color: COLORS.redText }}>
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: COLORS.redText }} />{t("미입장")}
+                </div>
+                <div><button onClick={() => onResend(n)} className="hover-accent-border" style={{ height: 26, padding: "0 11px", border: "1px solid rgba(var(--c-w),.18)", borderRadius: 999, background: "transparent", color: COLORS.fg2, font: "500 11.5px/1 inherit", cursor: "pointer" }}>{t("링크 복사")}</button></div>
+              </div>
+            ))}
+            {attendance.noShowCount === 0 && attendance.noShows.length === 0 && <div style={{ padding: "16px 4px", color: COLORS.dim, fontSize: 13 }}>{t("모든 참가자가 입장했습니다.")}</div>}
+          </>
+        )}
       </div>
     </div>
   );
 }
 
-function RosterView({ roster, source, error, participants, onCopyLink, onBlock, onUnblock }: {
-  roster: { participantId: string; joinUrl: string }[];
-  source: "cognito" | "derived" | null;
+function RosterView({ roster, source, joinUrl, error, participants, onCopyLink, onBlock, onUnblock }: {
+  roster: RosterEntry[];
+  source: RosterSource | null;
+  joinUrl?: string;
   error: string | null;
   participants: Participant[];
   onCopyLink: (url: string) => void;
   onBlock: (id: string) => void;
   onUnblock: (id: string) => void;
 }) {
-  const { t } = useLocale();
+  const { locale, t } = useLocale();
   if (error) {
     return (
       <div style={{ padding: 20, color: COLORS.redText, fontSize: 13.5 }}>
-        {t("참가자 명단을 불러올 수 없습니다 (Cognito 권한 확인 필요)")}: {error}
+        {t("참가자 명단을 불러올 수 없습니다.")}: {error}
       </div>
     );
   }
+  if (!source) return <div role="status" style={{ padding: 20, color: COLORS.dim }}>{t("불러오는 중…")}</div>;
+  const nicknameMode = source === "nickname";
+  const sharedJoinUrl = joinUrl ?? roster[0]?.joinUrl ?? new URL("/", location.origin).href;
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0, overflowY: "auto" }}>
       <div style={{ flex: "none", padding: "16px 20px 14px", borderBottom: `1px solid ${COLORS.border}` }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>{t("로스터 · 조인 링크")}</div>
+              <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>{nicknameMode ? t("로스터 · 닉네임 참가자") : t("로스터 · 조인 링크")}</div>
               {source === "derived" && (
                 <span style={{ fontSize: 10.5, fontWeight: 700, padding: "2px 8px", borderRadius: 999, background: "rgba(var(--c-danger-rgb),.14)", border: "1px solid rgba(var(--c-danger-rgb),.45)", color: COLORS.redText }}>
                   {t("로컬 파생 로스터")}
                 </span>
               )}
             </div>
-            <div style={{ fontSize: 12.5, color: COLORS.dim }}>{t("참가자에게 배포할 조인 링크입니다. QR을 인쇄하거나 CSV로 내려받을 수 있습니다.")}</div>
+            <div style={{ fontSize: 12.5, color: COLORS.dim, lineHeight: 1.5 }}>
+              {nicknameMode
+                ? t("실제로 입장한 게스트만 표시됩니다. 모두 같은 공용 링크에서 닉네임을 입력해 입장합니다.")
+                : t("참가자에게 배포할 조인 링크입니다. QR을 인쇄하거나 CSV로 내려받을 수 있습니다.")}
+            </div>
           </div>
           <a href="/api/operator/roster.csv" className="hover-accent-border" style={{ height: 30, padding: "0 14px", display: "flex", alignItems: "center", border: "1px solid rgba(var(--c-w),.18)", borderRadius: 999, color: COLORS.fg2, fontSize: 12.5, fontWeight: 600, textDecoration: "none", flexShrink: 0 }}>
             {t("CSV 다운로드")}
           </a>
         </div>
+        {nicknameMode && (
+          <div style={{ marginTop: 14, padding: "12px 14px", borderRadius: 12, border: `1px solid ${COLORS.border}`, background: "rgba(var(--c-w),.04)" }}>
+            <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 8 }}>{t("공용 입장 링크")}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <a href={sharedJoinUrl} target="_blank" rel="noreferrer" style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere", fontSize: 12.5, color: COLORS.orange }}>{sharedJoinUrl}</a>
+              <button onClick={() => onCopyLink(sharedJoinUrl)} className="hover-accent-border" style={{ flex: "none", height: 30, padding: "0 12px", border: "1px solid rgba(var(--c-w),.18)", borderRadius: 999, background: "transparent", color: COLORS.fg2, fontSize: 12.5 }}>{t("공용 링크 복사")}</button>
+            </div>
+          </div>
+        )}
       </div>
       <div style={{ padding: "0 20px 8px" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "150px 1fr 80px 90px", gap: "0 14px", padding: "11px 4px", fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "rgba(var(--c-w),.35)", borderBottom: `1px solid ${COLORS.border}`, marginTop: 8 }}>
-          <div>{t("참가자 ID")}</div><div>{t("조인 링크")}</div><div></div><div></div>
+        <div style={{ display: "grid", gridTemplateColumns: nicknameMode ? "minmax(150px, 1fr) minmax(0, 2fr)" : "150px 1fr 80px 90px", gap: "0 14px", padding: "11px 4px", fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "rgba(var(--c-w),.35)", borderBottom: `1px solid ${COLORS.border}`, marginTop: 8 }}>
+          {nicknameMode
+            ? <><div>{t("닉네임")}</div><div>{t("참가자 ID")}</div></>
+            : <><div>{t("참가자 ID")}</div><div>{t("조인 링크")}</div><div></div><div></div></>}
         </div>
         {roster.map((r) => (
-          <div key={r.participantId} className="hover-row" style={{ display: "grid", gridTemplateColumns: "150px 1fr 80px 90px", gap: "0 14px", alignItems: "center", padding: "11px 4px", borderBottom: "1px solid rgba(var(--c-w),.055)", fontSize: 13.5 }}>
-            <div style={{ fontFamily: "ui-monospace,Menlo,monospace", fontSize: 12.5, color: COLORS.fg2 }}>{r.participantId}</div>
-            <div style={{ fontSize: 12, color: COLORS.dim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.joinUrl}</div>
-            <a href={`/api/operator/roster/${encodeURIComponent(r.participantId)}/qr.png`} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: COLORS.fg2, textDecoration: "none" }}>{t("QR 보기")}</a>
-            <button onClick={() => onCopyLink(r.joinUrl)} className="hover-accent-border" style={{ height: 26, padding: "0 11px", border: "1px solid rgba(var(--c-w),.18)", borderRadius: 999, background: "transparent", color: COLORS.fg2, font: "500 11.5px/1 inherit", cursor: "pointer" }}>{t("복사")}</button>
+          <div key={r.participantId} className="hover-row" style={{ display: "grid", gridTemplateColumns: nicknameMode ? "minmax(150px, 1fr) minmax(0, 2fr)" : "150px 1fr 80px 90px", gap: "0 14px", alignItems: "center", padding: "11px 4px", borderBottom: "1px solid rgba(var(--c-w),.055)", fontSize: 13.5 }}>
+            {nicknameMode && <div style={{ overflowWrap: "anywhere" }}>{displayName(r.participantId, r.displayName, locale)}</div>}
+            <div style={{ fontFamily: "ui-monospace,Menlo,monospace", fontSize: 12.5, color: COLORS.fg2, overflowWrap: "anywhere" }}>{r.participantId}</div>
+            {!nicknameMode && <>
+              <div style={{ fontSize: 12, color: COLORS.dim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.joinUrl}</div>
+              <a href={`/api/operator/roster/${encodeURIComponent(r.participantId)}/qr.png`} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, color: COLORS.fg2, textDecoration: "none" }}>{t("QR 보기")}</a>
+              <button onClick={() => onCopyLink(r.joinUrl)} className="hover-accent-border" style={{ height: 26, padding: "0 11px", border: "1px solid rgba(var(--c-w),.18)", borderRadius: 999, background: "transparent", color: COLORS.fg2, font: "500 11.5px/1 inherit", cursor: "pointer" }}>{t("복사")}</button>
+            </>}
           </div>
         ))}
-        {roster.length === 0 && <div style={{ padding: "16px 4px", color: COLORS.dim, fontSize: 13 }}>{t("생성된 로스터가 없습니다 (participantCount=0).")}</div>}
+        {roster.length === 0 && <div style={{ padding: "16px 4px", color: COLORS.dim, fontSize: 13 }}>{nicknameMode ? t("아직 입장한 참가자가 없습니다.") : t("생성된 로스터가 없습니다 (participantCount=0).")}</div>}
       </div>
 
       <div style={{ flex: "none", padding: "20px 20px 14px", borderTop: `1px solid ${COLORS.border}`, borderBottom: `1px solid ${COLORS.border}` }}>
@@ -729,11 +765,14 @@ function RosterView({ roster, source, error, participants, onCopyLink, onBlock, 
       </div>
       <div style={{ padding: "0 20px 24px" }}>
         <div style={{ display: "grid", gridTemplateColumns: "150px 90px 90px 1fr 90px", gap: "0 14px", padding: "11px 4px", fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: "rgba(var(--c-w),.35)", borderBottom: `1px solid ${COLORS.border}`, marginTop: 8 }}>
-          <div>{t("참가자 ID")}</div><div>{t("질문")}</div><div>{t("AI 질문")}</div><div>{t("상태")}</div><div></div>
+          <div>{nicknameMode ? t("닉네임 / 참가자 ID") : t("참가자 ID")}</div><div>{t("질문")}</div><div>{t("AI 질문")}</div><div>{t("상태")}</div><div></div>
         </div>
         {participants.map((p) => (
           <div key={p.participantId} className="hover-row" style={{ display: "grid", gridTemplateColumns: "150px 90px 90px 1fr 90px", gap: "0 14px", alignItems: "center", padding: "11px 4px", borderBottom: "1px solid rgba(var(--c-w),.055)", fontSize: 13.5 }}>
-            <div style={{ fontFamily: "ui-monospace,Menlo,monospace", fontSize: 12.5, color: COLORS.fg2 }}>{p.participantId}</div>
+            <div style={{ fontSize: 12.5, color: COLORS.fg2, overflowWrap: "anywhere" }}>
+              {nicknameMode && p.displayName && <div style={{ marginBottom: 3 }}>{displayName(p.participantId, p.displayName, locale)}</div>}
+              <div style={{ fontFamily: "ui-monospace,Menlo,monospace", color: nicknameMode && p.displayName ? COLORS.dim : undefined }}>{p.participantId}</div>
+            </div>
             <div style={{ fontSize: 12.5, color: COLORS.dim }}>{p.questionCount}</div>
             <div style={{ fontSize: 12.5, color: COLORS.dim }}>{p.aiQueryCount}</div>
             <div style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12.5, color: p.blocked ? COLORS.redText : COLORS.tealText }}>
@@ -793,8 +832,7 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
   }>({ status: null });
   const [attendance, setAttendance] = useState<Attendance | null>(null);
   const [attendanceError, setAttendanceError] = useState<string | null>(null);
-  const [roster, setRoster] = useState<{ participantId: string; joinUrl: string }[]>([]);
-  const [rosterSource, setRosterSource] = useState<"cognito" | "derived" | null>(null);
+  const [roster, setRoster] = useState<Roster | null>(null);
   const [rosterError, setRosterError] = useState<string | null>(null);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [lastExport, setLastExport] = useState<string | null>(null);
@@ -853,7 +891,7 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
   }
 
   function loadRoster() {
-    api.roster().then((r) => { setRoster(r.roster); setRosterSource(r.source); setRosterError(null); }).catch((err) => setRosterError(err.message));
+    api.roster().then((r) => { setRoster(r); setRosterError(null); }).catch((err) => setRosterError(err.message));
   }
 
   useEffect(() => {
@@ -996,7 +1034,7 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
           >
             <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 9 }}>
               <span style={{ width: 6, height: 6, borderRadius: "50%", background: COLORS.red, animation: "pulseDot 1.6s ease-in-out infinite" }} />
-              <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: COLORS.redText }}>{t("아직 입장 안 한 참가자")}</span>
+              <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase", color: COLORS.redText }}>{attendance?.source === "nickname" ? t("목표까지 남은 인원") : t("아직 입장 안 한 참가자")}</span>
             </div>
             <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
               <span style={{ fontSize: 30, fontWeight: 700, lineHeight: 1 }}>{attendance?.noShowCount ?? "—"}</span>
@@ -1011,6 +1049,7 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
               <span>{t("입장 완료")} {attendance?.joinedCount ?? "—"}</span>
               <span style={{ color: COLORS.orange, fontWeight: 500 }}>{t("확인")} →</span>
             </div>
+            {attendance?.source === "nickname" && <div style={{ marginTop: 8, fontSize: 11.5, color: COLORS.dim }}>{t("닉네임 입장 · 목표 기준")}</div>}
           </div>
 
           <div style={{ padding: "10px 12px 4px", fontSize: 11, fontWeight: 700, letterSpacing: ".07em", textTransform: "uppercase", color: COLORS.fg4 }}>{t("채널")}</div>
@@ -1084,8 +1123,9 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
           )}
           {view === "roster" && (
             <RosterView
-              roster={roster}
-              source={rosterSource}
+              roster={roster?.roster ?? []}
+              source={roster?.source ?? null}
+              joinUrl={roster?.joinUrl}
               error={rosterError}
               participants={participants}
               onCopyLink={copyLink}

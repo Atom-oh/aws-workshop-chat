@@ -34,10 +34,11 @@ covers what a future session needs to move fast, not why every decision was made
 npm workspaces monorepo (`app`, `infra`, `web`) — most commands run inside one workspace.
 
 ```bash
-# Local dev loop (DynamoDB Local + app, no AWS account needed for chat/threads/upvotes/export)
+# Local dev loop (nickname participants + DynamoDB Local; no AWS account for chat/threads/upvotes)
 docker compose up --build
-# AI chat needs real AWS creds + BEDROCK_MODEL_ID exported on the host first; operator login
-# needs a real Cognito user (Bedrock/Cognito have no local emulator).
+# Compose defaults PARTICIPANT_AUTH_MODE to nickname; backend/CDK default to cognito.
+# Operator login needs a real Cognito pool/client/admin user and AWS credentials passed into
+# the container; AI chat also needs real AWS credentials + BEDROCK_MODEL_ID.
 
 # Backend (app/)
 cd app
@@ -57,6 +58,8 @@ cd infra
 npm run synth             # cdk synth
 npm run deploy             # cdk deploy — see README.md "Deploy" for the required --context flags
 npm run destroy             # cdk destroy
+npx tsc --noEmit
+node --import tsx --test test/participant-auth-mode.test.ts # offline auth-mode synth/assertions
 
 # Root
 npm test                  # delegates to app's test suite
@@ -102,26 +105,46 @@ for key construction; nothing else builds a PK/SK string by hand. `app/src/db/re
 views) — DynamoDB's 1MB-per-response cap is real at this table's largest partitions (Timeline,
 any one channel's Messages), and a naive single Query/Scan silently truncates past it.
 
-### Auth: two independent credential paths that happen to share one secret
+### Auth: participant mode selection, Cognito operators, app-signed sessions
 
-- **Cognito-backed** (`app/src/auth/cognito.ts`, single `POST /api/login/id` route in
-  `app/src/routes/auth.ts`): typing an ID + password, for both the operator and participants.
-  Role is determined by **Cognito group membership** (`AdminListGroupsForUser`, groups
-  `admin`/`participant`), never by comparing a username string.
-- **App-signed session tokens** (`app/src/auth/token.ts`, `app/src/auth/session.ts`): the
-  one-click `/j?t=<token>` join link. Never touches Cognito at request time — no IdP round-trip
-  for a disposable 3-day app.
+`PARTICIPANT_AUTH_MODE` accepts only `cognito` or `nickname`; backend/CDK default to `cognito`.
+`infra/bin/app.ts` resolves explicit `--context participantAuthMode` first, then the environment,
+then that default, and rejects unsupported values before creating stacks. It passes the mode
+through `WorkshopChatStackProps` into the ECS environment. The backend also validates its
+runtime configuration. Docker Compose explicitly defaults to `nickname` for local participant
+entry without an AWS account.
 
-There is no passphrase-based login path despite `config.participantPassphrase` still existing —
-it's only ever read to be *echoed back* in the operator roster response
-(`app/src/routes/operator.ts`), a leftover from a dropped design. Every real login goes through
-one of the two paths above.
+- **Cognito participant mode:** ID/password login (`POST /api/login/id`, `app/src/auth/cognito.ts`)
+  and individually signed `/j?t=<token>` join links. Cognito group membership determines role
+  (`AdminListGroupsForUser`, `admin`/`participant`), never the username string.
+- **Nickname participant mode:** everyone shares the public app link and enters a display
+  nickname. The app creates an anonymous participant identity and signs its session cookie.
+  Reloading preserves the current identity while that session is valid; logout, cookie
+  removal/expiry, or a new browser creates a new identity on the next join, even with the same
+  nickname. A nickname is not a recovery credential.
+- **Operators in both modes:** sign in at `/operator` with Cognito credentials and `admin`
+  group membership. Nickname entry never grants operator access.
 
-Both paths derive from the same `CredentialSeed` secret (Secrets Manager): the
-credentials-provisioner Lambda (`infra/lambda/credentials-handler.ts`) uses it to derive every
-participant's Cognito ID/password, and the app container reuses the identical value as its
-session-token signing secret — so the operator console can re-derive any participant's ID and
-mint their join link on demand, with no separate roster to keep in sync.
+The Cognito pool/client/groups, secrets, credentials provider, and operator account remain in
+both modes. Nickname mode changes only the credentials Custom Resource's `ParticipantCount`
+to `0`, skipping participant provisioning without deleting existing users. Keep the task's
+`PARTICIPANT_COUNT` at the anticipated headcount. Nickname rosters use actual app registrants
+against that target and a shared public link, not synthetic rows or pre-issued credentials;
+the target is not an admission limit. Preserve construct IDs when changing modes.
+
+CDK sets `PUBLIC_APP_URL` on the container after calculating `appHostname`: always
+`https://${appHostname}`, using the configured custom domain or CloudFront domain. The nickname
+roster uses this value for share links. Local requests fall back to their protocol/host when
+it is unset; behind CloudFront/ALB that fallback would otherwise see HTTP with `trustProxy=false`.
+
+`participantPassphrase` remains a required CDK context option for compatibility, unrelated to
+mode selection. There is no passphrase login. Keep it and the other normal deploy options in
+nickname deployment commands (see README).
+
+The `CredentialSeed` secret (Secrets Manager) derives Cognito participant credentials in
+`infra/lambda/credentials-handler.ts` and signs app sessions in both modes
+(`app/src/auth/token.ts`, `app/src/auth/session.ts`). In Cognito mode the operator can re-derive
+participant IDs and mint join links without maintaining a separate roster.
 
 **CloudFormation gotcha that bit this twice:** dynamic references
 (`{{resolve:secretsmanager:...}}`) are NOT resolved inside Custom Resource properties — passing
@@ -199,7 +222,8 @@ the guide bucket must go through this helper rather than trusting a caller-suppl
 
 `docs/ssm-integration.md` documents a central-poller + AWS Organizations + cross-account
 `AssumeRole` design from the original spec (`docs/SPEC-workshop-chat.md` §5) — **explicitly not
-implemented**. This repo generates synthetic participant IDs locally instead
-(`app/src/auth/credentials.ts`) and distributes join links via the operator console
-(`GET /api/operator/roster`) or `scripts/gen-links.ts`. Don't treat either spec doc as describing
-current behavior; `docs/DATA_MODEL.md` and this file are the accurate references.
+implemented**. Cognito mode derives synthetic participant IDs locally
+(`app/src/auth/credentials.ts`) and distributes individual join links through the operator
+console (`GET /api/operator/roster`) or `scripts/gen-links.ts`. Nickname mode creates anonymous
+identities when participants enter through the shared app link. Don't treat either historical
+spec doc as describing current behavior; use this file for auth-mode behavior.

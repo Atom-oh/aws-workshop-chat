@@ -1,7 +1,7 @@
-# Local dev loop, no AWS account required for chat/threads/upvotes/export/moderation via the
-# participant passphrase login. Two exceptions need real AWS credentials on the host: AI chat
-# (Bedrock has no local emulator) and operator login (Cognito-backed, see auth.ts) — pass
-# ADMIN_USERNAME/ADMIN_PASSWORD matching a real Cognito user in your dev/test pool for that path.
+# Local participant chat/threads/upvotes use nickname entry with no Cognito account.
+# Compose defaults to nickname; CDK deployments default to cognito.
+# Operator login still needs a real Cognito pool/client/user and AWS credentials passed into
+# the container. AI chat and S3-backed features also need their real AWS configuration.
 services:
   dynamodb-local:
     image: amazon/dynamodb-local:latest
@@ -36,6 +36,7 @@ services:
       GUIDE_LOCAL_DIR: /guide
       SCALE: small
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin@ws}
+      PARTICIPANT_AUTH_MODE: ${PARTICIPANT_AUTH_MODE:-nickname}
       PARTICIPANT_PASSPHRASE: dev-passphrase
       PARTICIPANT_COUNT: "10"
       SESSION_SECRET: dev-secret-do-not-use-in-production

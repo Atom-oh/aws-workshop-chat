@@ -91,6 +91,15 @@ const DICT: Record<string, string> = {
   "미입장": "Not joined",
   "참가자 ID": "Participant ID",
   "모든 참가자가 입장했습니다.": "Everyone has joined.",
+  "참가자 명단을 불러올 수 없습니다.": "Couldn't load the participant roster.",
+  "참여 현황 · 닉네임 입장": "Attendance · nickname entry",
+  "닉네임 입장은 사전 명단이 없어 미입장자를 특정할 수 없습니다. 기준 인원은 설정된 참가 목표와 입장한 게스트 수 중 큰 값입니다.":
+    "Nickname entry has no advance roster, so individual absentees cannot be identified. The reference count is the greater of the configured target and the number of guests who have joined.",
+  "기준 인원": "Reference count",
+  "목표까지 남은 인원": "Remaining to target",
+  "같은 닉네임도 별도 참가자로 집계됩니다.": "Guests with the same nickname are counted as separate participants.",
+  "공용 입장 링크는 로스터에서 복사할 수 있습니다.": "Copy the shared join link from the roster.",
+  "닉네임 입장 · 목표 기준": "Nickname entry · target-based count",
   "참가자 명단을 불러올 수 없습니다 (Cognito 권한 확인 필요)": "Couldn't load the participant roster (check Cognito permissions)",
   "로컬 파생 로스터": "Local placeholder roster",
   "워크샵 계정은 언젠가 삭제됩니다. 종료 전 xlsx를 반드시 다운로드하세요.":
@@ -130,6 +139,12 @@ const DICT: Record<string, string> = {
   "참가자에게 보이지 않음": "not visible to participants",
   "로스터 · 참가자 관리": "Roster · Participants",
   "로스터 · 조인 링크": "Roster · Join links",
+  "로스터 · 닉네임 참가자": "Roster · Nickname participants",
+  "실제로 입장한 게스트만 표시됩니다. 모두 같은 공용 링크에서 닉네임을 입력해 입장합니다.":
+    "Only guests who have actually joined are listed. Everyone enters a nickname using the same shared link.",
+  "공용 입장 링크": "Shared join link",
+  "공용 링크 복사": "Copy shared link",
+  "닉네임 / 참가자 ID": "Nickname / participant ID",
   "참가자에게 배포할 조인 링크입니다. QR을 인쇄하거나 CSV로 내려받을 수 있습니다.":
     "Join links to hand out to participants. Print the QR or download as CSV.",
   "CSV 다운로드": "Download CSV",
@@ -154,6 +169,29 @@ const DICT: Record<string, string> = {
     "Your join link has expired or is invalid. Please log in with your ID/password below.",
 
   // Login
+  "닉네임": "Nickname",
+  "워크샵에서 사용할 닉네임을 입력하세요. 닉네임은 다른 참가자에게 표시됩니다.":
+    "Enter a nickname for this workshop. Other participants will see your nickname.",
+  "1~20자. 운영자·관리자 이름과 제어·형식 문자는 사용할 수 없습니다.":
+    "1-20 characters. Operator/admin names and control or format characters are not allowed.",
+  "닉네임은 앞뒤 공백을 제외하고 1~20자로 입력해 주세요.":
+    "Enter a nickname with 1-20 characters, excluding leading and trailing spaces.",
+  "닉네임에 제어 문자나 보이지 않는 형식 문자를 사용할 수 없습니다.":
+    "Nicknames cannot contain control or invisible format characters.",
+  "운영자 또는 관리자용 닉네임은 사용할 수 없습니다.": "Operator and admin nicknames are reserved.",
+  "닉네임 입장이 비활성화되었습니다. 페이지를 새로고침해 주세요.":
+    "Nickname entry is disabled. Please refresh the page.",
+  "차단된 참가자입니다. 운영자에게 문의해 주세요.": "This participant is blocked. Please contact the operator.",
+  "운영자 로그인": "Operator login",
+  "운영자 ID": "Operator ID",
+  "운영자 ID와 비밀번호로 로그인하세요.": "Log in with your operator ID and password.",
+  "참가자 입장으로 돌아가기": "Back to participant entry",
+  "조인 링크가 만료되었거나 올바르지 않습니다. 아래 닉네임으로 입장해 주세요.":
+    "Your join link has expired or is invalid. Enter with a nickname below.",
+  "세션을 불러오지 못했습니다. 다시 시도해 주세요.": "Couldn't load your session. Please try again.",
+  "다시 시도": "Retry",
+  "불러오는 중…": "Loading…",
+  "입장 중…": "Entering…",
   "참가자 간에는 익명입니다. 운영자는 참가자에게 발급된 참가자 ID를 확인할 수 있습니다.":
     "Participants are anonymous to each other. The operator can look up the participant ID issued to each participant.",
   "ID (참가자 ID 또는 운영자 아이디)": "ID (participant ID or operator username)",

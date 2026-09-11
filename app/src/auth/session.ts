@@ -18,7 +18,12 @@ export function mintSessionCookie(reply: FastifyReply, payload: Omit<SessionPayl
 export function readSession(req: FastifyRequest): SessionPayload | null {
   const cookie = req.cookies?.[COOKIE_NAME];
   if (!cookie) return null;
-  return verifyToken(cookie, config.sessionSecret);
+  const session = verifyToken(cookie, config.sessionSecret);
+  return session && isSessionAllowed(session) ? session : null;
+}
+
+export function isSessionAllowed(session: SessionPayload): boolean {
+  return session.role === "operator" || (session.authMode ?? "cognito") === config.participantAuthMode;
 }
 
 /** Route guard: 401s if there's no valid session. */

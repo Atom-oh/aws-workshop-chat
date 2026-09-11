@@ -6,9 +6,21 @@ import { WorkshopChatBedrockStack } from "../lib/bedrock-stack";
 
 const app = new App();
 
-// §10: every deploy-time knob comes from --context, nothing is hardcoded. Region and account
-// come from the CLI's resolved environment (CDK_DEFAULT_REGION/ACCOUNT) so the same template
-// deploys anywhere a Central Account happens to sit — see the deploy command in README.md.
+// Explicit context takes precedence over the environment; validate before creating resources.
+const contextParticipantAuthMode: unknown = app.node.tryGetContext("participantAuthMode");
+const participantAuthMode =
+  contextParticipantAuthMode === undefined
+    ? process.env.PARTICIPANT_AUTH_MODE ?? "cognito"
+    : contextParticipantAuthMode;
+if (participantAuthMode !== "cognito" && participantAuthMode !== "nickname") {
+  throw new Error(
+    `Invalid participantAuthMode/PARTICIPANT_AUTH_MODE: ${String(participantAuthMode)}. Expected cognito or nickname.`,
+  );
+}
+
+// Deploy-time knobs come from --context (participantAuthMode also accepts the environment).
+// Region and account come from the CLI's resolved environment (CDK_DEFAULT_REGION/ACCOUNT)
+// so the same template deploys anywhere a Central Account sits (see README.md).
 const workshopName = app.node.tryGetContext("workshopName") ?? "aws-workshop-chat";
 const scale = (app.node.tryGetContext("scale") ?? "small") as "small" | "large";
 const bedrockModelId = app.node.tryGetContext("bedrockModelId");
@@ -59,6 +71,7 @@ new WorkshopChatStack(app, `${workshopName}-WorkshopChat`, {
   adminUsername,
   participantPassphrase,
   participantCount,
+  participantAuthMode,
   // A Bedrock Knowledge Base's S3 data source must live in the same region as the KB itself, so
   // when the KB is enabled the guide bucket is owned by bedrock-stack.ts (pinned to
   // bedrockRegion) instead of here — see the comment there. Undefined when the KB is disabled;

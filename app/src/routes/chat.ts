@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { requireSession, requireOperator } from "../auth/session.js";
+import { config } from "../config.js";
 import { broadcast } from "../ws/hub.js";
 import {
   createChannel,
@@ -90,16 +91,20 @@ export async function chatRoutes(app: FastifyInstance) {
       return reply.code(403).send({ error: "only the operator can post announcements" });
     }
     const labStep = await getLabStep();
+    const displayName = session.authMode === "nickname" ? session.displayName : undefined;
 
     let message;
     if (threadId) {
-      const result = await postThreadReply(threadId, { channel: slug, participantId: session.participantId, body, labStep, media });
+      const result = await postThreadReply(threadId, {
+        channel: slug, participantId: session.participantId, displayName, body, labStep, media,
+      });
       message = result.message;
       broadcast(slug, { type: "threadReplyCount", rootUlid: threadId, replyCount: result.rootReplyCount });
     } else {
       message = await postMessage({
         channel: slug,
         participantId: session.participantId,
+        displayName,
         body,
         kind: kind === "question" ? "question" : "msg",
         threadId,
@@ -174,7 +179,10 @@ export async function chatRoutes(app: FastifyInstance) {
 
   app.get("/api/participants", async (req, reply) => {
     if (!requireOperator(req, reply)) return;
-    reply.send({ participants: await listParticipants() });
+    const participants = (await listParticipants()).filter(
+      (p) => (p.authMode ?? "cognito") === config.participantAuthMode,
+    );
+    reply.send({ participants });
   });
 
   app.get("/api/labstep", async (_req, reply) => {

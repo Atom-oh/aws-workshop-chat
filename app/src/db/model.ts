@@ -11,6 +11,7 @@ export interface MessageItem {
   pk: string;
   sk: string;
   participantId: string;
+  displayName?: string;
   body: string;
   kind: MessageKind;
   channel: string;
@@ -30,6 +31,7 @@ export interface ParticipantItem {
   sk: "META";
   participantId: string;
   displayName: string;
+  authMode?: "cognito" | "nickname";
   pwHash: string;
   questionCount: number;
   aiQueryCount: number;
@@ -42,6 +44,7 @@ export interface AiQueryItem {
   pk: string;
   sk: string;
   participantId: string;
+  displayName?: string;
   query: string;
   refDocs: string[];
   answerSummary: string;

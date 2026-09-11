@@ -18,15 +18,20 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json();
 }
 
+export type ParticipantAuthMode = "cognito" | "nickname";
+
 export interface Session {
   participantId: string;
   role: "participant" | "operator";
+  displayName?: string;
+  authMode?: ParticipantAuthMode;
 }
 
 export interface Message {
   pk: string;
   sk: string;
   participantId: string;
+  displayName?: string;
   body: string;
   kind: "msg" | "question";
   channel: string;
@@ -53,6 +58,7 @@ export interface AiQuery {
   pk: string;
   sk: string;
   participantId: string;
+  displayName?: string;
   query: string;
   refDocs: string[];
   answerSummary: string;
@@ -81,19 +87,34 @@ export interface NoShow {
   joinUrl: string;
 }
 
+export type RosterSource = "cognito" | "derived" | "nickname";
+
+export interface RosterEntry {
+  participantId: string;
+  displayName?: string;
+  joinUrl: string;
+}
+
+export interface Roster {
+  roster: RosterEntry[];
+  source: RosterSource;
+  joinUrl?: string;
+  participantPassphrase?: string;
+}
+
 export interface Attendance {
   expectedCount: number;
   joinedCount: number;
   noShowCount: number;
   noShows: NoShow[];
-  // "cognito": the roster came from Cognito's participant group (production truth). "derived":
-  // no Cognito user pool is configured for this deployment, so it's a local-dev placeholder
-  // roster — the operator should not treat these numbers as the real headcount.
-  source: "cognito" | "derived";
+  // Nickname attendance compares joined guests to a target, with no individual no-show list.
+  // "derived" is a local placeholder, while "cognito" uses the participant group roster.
+  source: RosterSource;
 }
 
 export interface Participant {
   participantId: string;
+  displayName?: string;
   questionCount: number;
   aiQueryCount: number;
   lastSeen: string;
@@ -101,11 +122,12 @@ export interface Participant {
 }
 
 export const api = {
-  session: () => req<{ session: Session | null }>("/api/session"),
-  // Single Cognito login for both participant and operator accounts — role comes back from
-  // group membership server-side, not from which login form the user picked.
+  session: () => req<{ session: Session | null; participantAuthMode: ParticipantAuthMode }>("/api/session"),
+  // Operator passwords work in either mode; participant passwords require Cognito mode.
   loginId: (id: string, password: string) =>
     req("/api/login/id", { method: "POST", body: JSON.stringify({ id, password }) }),
+  loginNickname: (nickname: string) =>
+    req<{ ok: true }>("/api/login/nickname", { method: "POST", body: JSON.stringify({ nickname }) }),
   logout: () => req("/api/logout", { method: "POST" }),
 
   channels: () => req<{ channels: Channel[] }>("/api/channels"),
@@ -141,11 +163,7 @@ export const api = {
   exportStatus: () =>
     req<{ lastExportAt: string | null; rowCounts: Record<string, number> | null }>("/api/export/status"),
 
-  roster: () => req<{
-    roster: { participantId: string; joinUrl: string }[];
-    source: "cognito" | "derived";
-    participantPassphrase: string;
-  }>("/api/operator/roster"),
+  roster: () => req<Roster>("/api/operator/roster"),
 
   operatorLoginLink: () => req<{ loginUrl: string }>("/api/operator/login-link"),
 
