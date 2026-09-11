@@ -41,3 +41,16 @@ test("expired token is rejected", () => {
 test("malformed token (no dot) is rejected", () => {
   assert.equal(verifyToken("not-a-real-token", SECRET), null);
 });
+
+test("signed payloads with invalid session types are rejected without throwing", () => {
+  for (const payload of [
+    null,
+    { participantId: "guest-1", role: "owner", exp: future },
+    { participantId: 123, role: "participant", exp: future },
+    { participantId: "guest-1", role: "participant", authMode: "disabled", exp: future },
+    { participantId: "guest-1", role: "participant", displayName: {}, exp: future },
+  ]) {
+    const token = issueToken(payload as any, SECRET);
+    assert.equal(verifyToken(token, SECRET), null);
+  }
+});

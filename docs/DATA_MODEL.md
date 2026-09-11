@@ -8,11 +8,11 @@ contract; every key here exists to serve one of the four sheets with a single qu
 | Entity | PK | SK | Notable attributes |
 |---|---|---|---|
 | Channel | `CHANNEL#<slug>` | `META` | `name`, `archived`, `scaleVisible` |
-| Message | `CHANNEL#<slug>` | `MSG#<ulid>` | `participantId`, `body`, `kind` (`msg`\|`question`), `threadId?`, `labStep`, `upvotes`, `status` (`open`\|`resolved`, questions only), `deleted`, `media[]` |
+| Message | `CHANNEL#<slug>` | `MSG#<ulid>` | `participantId`, `displayName?`, `body`, `kind` (`msg`\|`question`), `threadId?`, `labStep`, `upvotes`, `status` (`open`\|`resolved`, questions only), `deleted`, `media[]` |
 | Thread reply | `THREAD#<rootUlid>` | `MSG#<ulid>` | same shape as Message |
 | Question status index (denormalized) | `QSTATUS#open` \| `QSTATUS#resolved` | `<upvotesPadded>#<ulid>` | `body`, `channel`, `labStep`, `resolvedAt?`, `responder?` — written alongside every question Message so the operator "unresolved" view and large-mode upvote sort are one query |
-| Participant | `USER#<participantId>` | `META` | `displayName`, `pwHash`, `questionCount`, `aiQueryCount`, `firstSeen`, `lastSeen`, `blocked` |
-| AI query | `USER#<participantId>` | `AI#<ulid>` | `query`, `refDocs[]`, `answerSummary`, `feedback` (`up`\|`down`\|null), `labStep`, `tokensIn`, `tokensOut` |
+| Participant | `USER#<participantId>` | `META` | `displayName`, `authMode?` (`cognito`\|`nickname`; absent on legacy Cognito records), `pwHash`, `questionCount`, `aiQueryCount`, `firstSeen`, `lastSeen`, `blocked` |
+| AI query | `USER#<participantId>` | `AI#<ulid>` | `displayName?`, `query`, `refDocs[]`, `answerSummary`, `feedback` (`up`\|`down`\|null), `labStep`, `tokensIn`, `tokensOut` |
 | Timeline event | `WORKSHOP` | `EVT#<ulid>` | `event` (`login`\|`upload`\|`question`\|`resolve`\|`ai_query`), `participantId`, `channel?`, `refId?`, `labStep` |
 | Lab step (singleton) | `WORKSHOP` | `LABSTEP` | `step`, `updatedAt` |
 | Export state (singleton) | `WORKSHOP` | `EXPORT` | `lastExportAt`, `s3Key` |
@@ -39,6 +39,15 @@ explicitly waives strong consistency at this scale.
 
 A participant is "silent" (Participants sheet) when `questionCount == 0 && aiQueryCount == 0`.
 
+Nickname entry assigns a random `guest-<UUID>` ID independently of the display name. Names
+may repeat; records, moderation and sessions remain keyed by the unique ID. Messages, replies
+and AI queries copy the nickname from the signed session so history retains the chosen name.
+Guest registration writes the participant and login event in one transaction before issuing
+the cookie, so a storage failure cannot leave a partially registered attendee.
+Participant lookups use strongly consistent reads to preserve identity on immediate login
+retries and observe new moderation blocks. Rosters and attendance include the active auth
+mode's participants, while exports retain historical records from both modes.
+
 ## Sheet → query mapping
 
 | Sheet (§8.2) | Query |
@@ -48,9 +57,10 @@ A participant is "silent" (Participants sheet) when `questionCount == 0 && aiQue
 | `Participants` | Scan filtered to `sk = META AND begins_with(pk, USER#)` — see "No secondary indexes" above |
 | `Timeline` | Query `pk = WORKSHOP`, SK prefix `EVT#` — single partition, no index |
 
-Column rename from spec: `accountId` → **`participantId`** everywhere in the export. Identities
-here are synthetic 12-digit IDs generated at deploy time (see §14-3 decision in the plan) — they
-resemble AWS account IDs but map to no real account, so the export never contains one.
+Column rename from spec: `accountId` → **`participantId`** everywhere in the export. Cognito
+identities are synthetic 12-digit IDs generated at deploy time; nickname identities use
+`guest-<UUID>`. Neither maps to a real AWS account. The Participants sheet's existing
+`displayName` column contains the chosen nickname for guests.
 
 ## Local development
 

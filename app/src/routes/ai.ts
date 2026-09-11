@@ -17,7 +17,7 @@ export async function aiRoutes(app: FastifyInstance) {
     if (!underQuota) return reply.code(429).send({ error: "daily AI quota exceeded" });
 
     const labStep = await getLabStep();
-    const result = await ask({ participantId: session.participantId, query, labStep });
+    const result = await ask({ participantId: session.participantId, displayName: session.displayName, query, labStep });
     await recordTimelineEvent({ participantId: session.participantId, event: "ai_query", labStep });
     reply.send(result);
   });
@@ -44,7 +44,9 @@ export async function aiRoutes(app: FastifyInstance) {
 
     const labStep = await getLabStep();
     try {
-      const { refDocs, aiUlid } = await askStream({ participantId: session.participantId, query, labStep }, (chunk) => {
+      const { refDocs, aiUlid } = await askStream({
+        participantId: session.participantId, displayName: session.displayName, query, labStep,
+      }, (chunk) => {
         reply.raw.write(`event: delta\ndata: ${JSON.stringify({ chunk })}\n\n`);
       });
       await recordTimelineEvent({ participantId: session.participantId, event: "ai_query", labStep });

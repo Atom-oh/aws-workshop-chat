@@ -5,6 +5,7 @@ import {
   QueryCommand,
   ScanCommand,
   UpdateCommand,
+  TransactWriteCommand,
   type QueryCommandInput,
   type ScanCommandInput,
 } from "@aws-sdk/lib-dynamodb";
@@ -110,6 +111,7 @@ export async function registerChannelSlug(slug: string) {
 export async function postMessage(input: {
   channel: string;
   participantId: string;
+  displayName?: string;
   body: string;
   kind: MessageKind;
   threadId?: string;
@@ -121,6 +123,7 @@ export async function postMessage(input: {
   const item: MessageItem = {
     ...k,
     participantId: input.participantId,
+    displayName: input.displayName,
     body: input.body,
     kind: input.kind,
     channel: input.channel,
@@ -157,6 +160,7 @@ export async function postMessage(input: {
 export async function postThreadReply(rootUlid: string, input: {
   channel: string;
   participantId: string;
+  displayName?: string;
   body: string;
   labStep: string;
   media?: string[];
@@ -166,6 +170,7 @@ export async function postThreadReply(rootUlid: string, input: {
   const item: MessageItem = {
     ...k,
     participantId: input.participantId,
+    displayName: input.displayName,
     body: input.body,
     kind: "msg",
     channel: input.channel,
@@ -339,12 +344,34 @@ export async function softDeleteMessage(channel: string, messageUlid: string) {
 // ---------- Participants ----------
 
 export async function getParticipant(participantId: string): Promise<ParticipantItem | undefined> {
-  const res = await ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: keys.participant(participantId) }));
+  // Authentication and moderation must see a just-created identity or a newly applied block.
+  const res = await ddb.send(new GetCommand({
+    TableName: TABLE_NAME, Key: keys.participant(participantId), ConsistentRead: true,
+  }));
   return res.Item as ParticipantItem | undefined;
 }
 
 export async function putParticipant(item: ParticipantItem) {
   await ddb.send(new PutCommand({ TableName: TABLE_NAME, Item: item }));
+}
+
+export async function registerNicknameParticipant(participant: ParticipantItem, labStep: string) {
+  const id = ulid();
+  const login: TimelineItem = {
+    ...keys.timeline(id),
+    participantId: participant.participantId,
+    event: "login",
+    labStep,
+    createdAt: isoFromUlid(id),
+  };
+  // A failed login must not leave an attendee without a session or its login timeline event.
+  await ddb.send(new TransactWriteCommand({
+    ClientRequestToken: id,
+    TransactItems: [
+      { Put: { TableName: TABLE_NAME, Item: participant, ConditionExpression: "attribute_not_exists(pk)" } },
+      { Put: { TableName: TABLE_NAME, Item: login } },
+    ],
+  }));
 }
 
 export async function touchParticipant(participantId: string, field: "questionCount" | "aiQueryCount") {
@@ -387,6 +414,7 @@ export async function listParticipants(): Promise<ParticipantItem[]> {
 
 export async function recordAiQuery(input: {
   participantId: string;
+  displayName?: string;
   query: string;
   refDocs: string[];
   answerSummary: string;
@@ -398,6 +426,7 @@ export async function recordAiQuery(input: {
   const item: AiQueryItem = {
     ...keys.aiQuery(input.participantId, id),
     participantId: input.participantId,
+    displayName: input.displayName,
     query: input.query,
     refDocs: input.refDocs,
     answerSummary: input.answerSummary,

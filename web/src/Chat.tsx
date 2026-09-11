@@ -56,7 +56,7 @@ function MessageRow({ m, children }: { m: Message; children?: React.ReactNode })
       </div>
       <div style={{ minWidth: 0, flex: 1 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 13.5, fontWeight: 700 }}>{displayName(m.participantId, locale)}</span>
+          <span style={{ fontSize: 13.5, fontWeight: 700, overflowWrap: "anywhere" }}>{displayName(m.participantId, m.displayName, locale)}</span>
           <span style={{ fontSize: 11, color: "rgba(var(--c-w),.3)", fontFamily: "ui-monospace,Menlo,monospace" }}>{timeLabel(m.createdAt, locale)}</span>
           {m.kind === "question" && (
             <span style={{
@@ -128,7 +128,7 @@ function ThreadPanel({ slug, message, onClose, width, onResize, initialMsgUlid, 
                 </div>
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
-                    <span style={{ fontSize: 12.5, fontWeight: 500 }}>{displayName(r.participantId, locale)}</span>
+                    <span style={{ fontSize: 12.5, fontWeight: 500, overflowWrap: "anywhere" }}>{displayName(r.participantId, r.displayName, locale)}</span>
                     <span style={{ fontSize: 11, color: "rgba(var(--c-w),.3)", fontFamily: "ui-monospace,Menlo,monospace" }}>{timeLabel(r.createdAt, locale)}</span>
                   </div>
                   <div style={{ fontSize: 13.5, lineHeight: 1.6, color: "rgba(var(--c-w),.85)" }}><Markdown text={r.body} /></div>
@@ -495,8 +495,8 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
           {session.role === "operator" && (
             <a href="/operator" style={{ fontSize: 13, color: COLORS.orange, textDecoration: "none", fontWeight: 600 }}>{t("운영자 화면으로 이동")} →</a>
           )}
-          <span style={{ fontSize: 13, color: COLORS.dim }}>
-            {displayName(session.role === "operator" ? "operator" : session.participantId, locale)}
+          <span style={{ fontSize: 13, color: COLORS.dim, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={displayName(session.role === "operator" ? "operator" : session.participantId, session.displayName, locale)}>
+            {displayName(session.role === "operator" ? "operator" : session.participantId, session.displayName, locale)}
           </span>
           <button onClick={onLogout} style={{ height: 30, padding: "0 12px", border: "1px solid rgba(var(--c-w),.2)", borderRadius: 999, background: "transparent", color: COLORS.text, cursor: "pointer" }}>{t("로그아웃")}</button>
         </div>

@@ -35,6 +35,8 @@ export interface WorkshopChatStackProps extends StackProps {
   adminUsername: string;
   participantPassphrase: string;
   participantCount: number;
+  /** Participant entry mode; operators always use Cognito. Validated and defaulted in app.ts. */
+  participantAuthMode: "cognito" | "nickname";
   /**
    * Owned by bedrock-stack.ts (in bedrockRegion) when the KB is enabled — a Bedrock KB's S3 data
    * source must be in the same region as the KB. Undefined when the KB is disabled, in which
@@ -98,7 +100,7 @@ export class WorkshopChatStack extends Stack {
       });
     }
 
-    // ---------- Cognito ----------
+    // ---------- Cognito (retained for operators in both participant auth modes) ----------
     const userPool = new cognito.UserPool(this, "UserPool", {
       userPoolName: `${props.workshopName}-participants`,
       selfSignUpEnabled: false, // every user is created by the credentials provisioner below
@@ -252,6 +254,7 @@ export class WorkshopChatStack extends Stack {
         ADMIN_USERNAME: props.adminUsername,
         PARTICIPANT_PASSPHRASE: props.participantPassphrase,
         PARTICIPANT_COUNT: String(props.participantCount),
+        PARTICIPANT_AUTH_MODE: props.participantAuthMode,
         PORT: "3000",
       },
       secrets: {
@@ -322,6 +325,8 @@ export class WorkshopChatStack extends Stack {
     }
 
     const appHostname = hasCustomDomain ? props.domainName! : distribution.distributionDomainName;
+    // Share links must use the public HTTPS origin even when the ALB forwards HTTP to the app.
+    container.addEnvironment("PUBLIC_APP_URL", `https://${appHostname}`);
 
     // ---------- Credential provisioning (Custom Resource) ----------
     const credentialsFn = new NodejsFunction(this, "CredentialsProvider", {
@@ -356,7 +361,9 @@ export class WorkshopChatStack extends Stack {
         // Lambda the literal unresolved "{{resolve:secretsmanager:...}}" token string instead of
         // the real secret. The Lambda fetches both via GetSecretValue itself (grantRead above).
         SeedArn: credentialSeed.secretArn,
-        ParticipantCount: props.participantCount,
+        // Keep operator provisioning and resource IDs stable; nickname participants register
+        // in the app. PARTICIPANT_COUNT on the task still carries the anticipated headcount.
+        ParticipantCount: props.participantAuthMode === "nickname" ? 0 : props.participantCount,
         AdminUsername: props.adminUsername,
         AdminPasswordArn: operatorPassword.secretArn,
         AdminGroupName: adminGroup.groupName,

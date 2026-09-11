@@ -40,15 +40,33 @@ export async function resolveRosterWith(
   return { ids: derivedIds, source: "derived" };
 }
 
-async function resolveRoster(): Promise<{ ids: string[]; source: "cognito" | "derived" }> {
+async function resolveRoster(): Promise<{
+  ids: string[];
+  source: "cognito" | "derived" | "nickname";
+  names?: Map<string, string>;
+}> {
+  if (config.participantAuthMode === "nickname") {
+    const participants = (await listParticipants()).filter((p) => p.authMode === "nickname");
+    return {
+      ids: participants.map((p) => p.participantId),
+      source: "nickname",
+      names: new Map(participants.map((p) => [p.participantId, p.displayName])),
+    };
+  }
   const derivedIds = Array.from({ length: config.participantCount }, (_, i) => deriveParticipantId(config.sessionSecret, i));
   return resolveRosterWith(listParticipantIds, derivedIds);
 }
 
+function appOrigin(req: any): string {
+  return (process.env.PUBLIC_APP_URL ?? `${req.protocol}://${req.headers.host}`).replace(/\/$/, "");
+}
+
 function buildJoinUrl(req: any, participantId: string, role: "participant" | "operator" = "participant"): string {
+  const origin = appOrigin(req);
+  // Guests pick their own nickname at this shared URL; never distribute another guest's session.
+  if (role === "participant" && config.participantAuthMode === "nickname") return `${origin}/`;
   const exp = Math.floor(Date.now() / 1000) + config.sessionTtlSeconds;
   const token = issueToken({ participantId, role, exp }, config.sessionSecret);
-  const origin = `${req.protocol}://${req.headers.host}`;
   return `${origin}/j?t=${encodeURIComponent(token)}`;
 }
 
@@ -83,9 +101,14 @@ function csvCell(value: string): string {
 export async function operatorRoutes(app: FastifyInstance) {
   app.get("/api/operator/roster", async (req, reply) => {
     if (!requireOperator(req, reply)) return;
-    const { ids, source } = await resolveRoster();
-    const roster = ids.map((participantId) => ({ participantId, joinUrl: buildJoinUrl(req, participantId) }));
-    reply.send({ roster, source, participantPassphrase: config.participantPassphrase });
+    const { ids, source, names } = await resolveRoster();
+    const roster = ids.map((participantId) => ({
+      participantId, displayName: names?.get(participantId), joinUrl: buildJoinUrl(req, participantId),
+    }));
+    reply.send({
+      roster, source, participantPassphrase: config.participantPassphrase,
+      ...(source === "nickname" ? { joinUrl: `${appOrigin(req)}/` } : {}),
+    });
   });
 
   // A bookmarkable one-click login for the operator's own account — the same mechanism as the
@@ -98,12 +121,14 @@ export async function operatorRoutes(app: FastifyInstance) {
 
   app.get("/api/operator/roster.csv", async (req, reply) => {
     if (!requireOperator(req, reply)) return;
-    const { ids } = await resolveRoster();
-    const rows = ids.map((participantId) => `${csvCell(participantId)},${csvCell(buildJoinUrl(req, participantId))}`);
+    const { ids, source, names } = await resolveRoster();
+    const rows = ids.map((participantId) => [
+      participantId, ...(source === "nickname" ? [names!.get(participantId)!] : []), buildJoinUrl(req, participantId),
+    ].map(csvCell).join(","));
     reply
       .header("Content-Type", "text/csv")
       .header("Content-Disposition", 'attachment; filename="roster.csv"')
-      .send(["participantId,joinUrl", ...rows].join("\n"));
+      .send([source === "nickname" ? "participantId,displayName,joinUrl" : "participantId,joinUrl", ...rows].join("\n"));
   });
 
   // Addressed by participantId, not a roster-array index — Cognito's ListUsersInGroup makes no
@@ -137,6 +162,12 @@ export async function operatorRoutes(app: FastifyInstance) {
   app.get("/api/operator/attendance", async (req, reply) => {
     if (!requireOperator(req, reply)) return;
     const { ids, source } = await resolveRoster();
+    if (source === "nickname") {
+      const expectedCount = Math.max(config.participantCount, ids.length);
+      return reply.send({
+        expectedCount, joinedCount: ids.length, noShowCount: expectedCount - ids.length, noShows: [], source,
+      });
+    }
     const joined = await listParticipants();
     const joinedIds = new Set(joined.map((p) => p.participantId));
     const noShows = ids

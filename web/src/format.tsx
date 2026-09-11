@@ -17,8 +17,10 @@ function idDigits(participantId: string): string {
 // The operator's session carries the literal participantId "operator" (see mintSessionCookie
 // call sites) — without this, their own messages render as "참가자 ...ator" (the last 4 chars
 // of the string "operator"), which reads as a broken/anonymous reply instead of the operator's.
-export function displayName(participantId: string, locale: "ko" | "en" = "ko"): string {
+export function displayName(participantId: string, nickname?: string, locale: "ko" | "en" = "ko"): string {
   if (participantId === "operator") return locale === "en" ? "Operator" : "운영자";
+  // Cognito participant records also carry displayName, but it is only their last four digits.
+  if (participantId.startsWith("guest-") && nickname) return nickname;
   const digits = idDigits(participantId).slice(-4);
   return locale === "en" ? `Participant ...${digits}` : `참가자 ...${digits}`;
 }

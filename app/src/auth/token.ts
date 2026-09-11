@@ -10,6 +10,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 export interface SessionPayload {
   participantId: string;
   role: "participant" | "operator";
+  authMode?: "cognito" | "nickname"; // absent on legacy Cognito join links and sessions
+  displayName?: string;
   sessionSuffix?: string; // e.g. "-2" for a second concurrent session, sticky-bound at login
   exp: number; // unix seconds
 }
@@ -40,7 +42,11 @@ export function verifyToken(token: string, secret: string): SessionPayload | nul
   } catch {
     return null;
   }
-  if (typeof payload.exp !== "number" || payload.exp < Math.floor(Date.now() / 1000)) return null;
-  if (!payload.participantId || !payload.role) return null;
+  if (!payload || typeof payload !== "object") return null;
+  if (typeof payload.exp !== "number" || payload.exp <= Math.floor(Date.now() / 1000)) return null;
+  if (typeof payload.participantId !== "string" || !payload.participantId) return null;
+  if (payload.role !== "participant" && payload.role !== "operator") return null;
+  if (payload.authMode !== undefined && payload.authMode !== "cognito" && payload.authMode !== "nickname") return null;
+  if (payload.displayName !== undefined && typeof payload.displayName !== "string") return null;
   return payload;
 }
