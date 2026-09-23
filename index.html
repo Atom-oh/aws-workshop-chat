@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="AWS Workshop Chat 배포부터 참가자 닉네임 입장, 질문·AI 도우미, 운영자 관리와 데이터 내보내기까지.">
+  <meta name="theme-color" content="#152333">
+  <title>Workshop Chat 가이드 · 배포와 사용법</title>
+  <link rel="canonical" href="https://www.atomai.click/aws-workshop-chat/">
+  <link rel="stylesheet" href="./style.css">
+  <script src="./guide.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">본문 바로가기</a>
+  <header class="topbar">
+    <a class="brand" href="#overview"><span class="brand-icon" aria-hidden="true">W</span>Workshop Chat <span class="brand-label">GUIDE</span></a>
+    <a class="home-link" href="/">Atom AI <span aria-hidden="true">↗</span></a>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="가이드 목차">
+      <p class="nav-label">WORKSHOP PLAYBOOK</p>
+      <a href="#overview">시작하기</a>
+      <a href="#participant">참가자 사용법</a>
+      <a href="#nickname">닉네임과 재접속</a>
+      <a href="#deploy">AWS에 배포하기</a>
+      <a href="#update">기존 배포 업데이트</a>
+      <a href="#operator">운영자 사용법</a>
+      <a href="#guide-docs">AI 가이드 문서</a>
+      <a href="#finish">내보내기와 종료</a>
+      <a href="#troubleshooting">문제 해결</a>
+      <div class="nav-note">문서 업데이트<br><time datetime="2026-09-23">2026. 09. 23.</time><br><span>닉네임 입장 지원</span></div>
+    </nav>
+    <main id="main">
+      <section class="hero" id="overview">
+        <div class="eyebrow"><span class="status-dot"></span>AWS WORKSHOP CHAT</div>
+        <h1>워크샵의 질문을,<br><span>한곳에서 함께.</span></h1>
+        <p class="hero-description">참가자는 닉네임으로 입장하고, 운영자는 놓친 질문 없이 진행하세요. 배포부터 워크샵 종료까지 필요한 내용을 모았습니다.</p>
+        <div class="hero-actions"><a class="button primary" href="#participant">참가자로 시작하기 <span aria-hidden="true">→</span></a><a class="button secondary" href="#deploy">배포 가이드</a></div>
+        <div class="feature-strip"><span>닉네임 입장</span><span>실시간 Q&amp;A</span><span>랩 가이드 AI</span><span>xlsx 내보내기</span></div>
+      </section>
+
+      <div class="notice">
+        <strong>현재 워크샵 바로가기</strong>
+        <p><a href="https://workshop-chat.atomai.click/">참가자 입장 · 닉네임으로 시작</a> · <a href="https://workshop-chat.atomai.click/operator?view=questions">운영자 질문 보드</a></p>
+        <p>이 페이지는 사용 설명서입니다. 운영자 화면에는 운영자 ID·비밀번호가 필요합니다. 별도로 배포한 워크샵에서는 해당 배포의 <code>AppUrl</code>을 사용하세요.</p>
+      </div>
+      <div class="route-grid">
+        <a href="#participant" class="route-card"><span class="step-number">01</span><h2>참가자</h2><p>입장하고, 질문하고,<br>도움을 받으세요.</p><span class="route-link">사용법 보기 →</span></a>
+        <a href="#deploy" class="route-card"><span class="step-number">02</span><h2>배포 담당자</h2><p>AWS 환경에 채팅을 배포하고<br>입장 방식을 설정하세요.</p><span class="route-link">배포하기 →</span></a>
+        <a href="#operator" class="route-card"><span class="step-number">03</span><h2>운영자</h2><p>질문, 참여 현황, AI 문서를<br>한 화면에서 관리하세요.</p><span class="route-link">운영하기 →</span></a>
+      </div>
+
+      <section id="participant" class="content-section">
+        <div class="section-kicker">FOR PARTICIPANTS</div>
+        <h2>링크 하나로, 바로 참여하세요.</h2>
+        <p>입장 화면은 워크샵의 설정에 따라 달라집니다. 닉네임 입력란이 보이면 아래 순서대로 참여하세요.</p>
+        <ol class="steps">
+          <li><strong>운영자가 공유한 공용 링크 열기</strong><p><a href="https://workshop-chat.atomai.click/">현재 워크샵 참가자 입장</a>을 엽니다. 별도로 배포한 워크샵은 해당 <code>AppUrl</code>로 접속합니다. 닉네임 모드에서는 모든 참가자가 같은 주소를 사용합니다.</p></li>
+          <li><strong>워크샵에서 사용할 닉네임 입력</strong><p>예: <code>구름고래</code>, <code>3조-민트</code>. 닉네임은 다른 참가자에게 표시되므로 실명 대신 워크샵용 이름을 권장합니다.</p></li>
+          <li><strong>입장 버튼 누르기</strong><p>참가자용 AWS 계정이나 Cognito ID·비밀번호 없이 입장합니다. 먼저 공지를 확인하고 질문 채널로 이동하세요.</p></li>
+        </ol>
+        <div class="callout"><strong>ID·비밀번호 화면이 보이나요?</strong><p>해당 워크샵은 Cognito 모드입니다. 운영자가 발급한 개별 조인 링크 또는 참가자 ID·비밀번호로 입장하세요. 임의의 닉네임이나 공통 암호로 로그인할 수는 없습니다.</p></div>
+        <h3>채널과 질문 사용하기</h3>
+        <div class="table-wrap"><table>
+          <thead><tr><th scope="col">화면 / 기능</th><th scope="col">사용 방법</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">공지</th><td>운영자가 올린 일정, 실습 링크, 공지사항을 확인합니다. 참가자는 공지를 게시할 수 없습니다.</td></tr>
+            <tr><th scope="row">질문</th><td><strong>질문으로 등록</strong>을 체크하고 실습 단계, 시도한 작업, 오류 내용을 함께 작성합니다. 일반 메시지로 보내면 질문 보드의 관리 대상이 되지 않습니다.</td></tr>
+            <tr><th scope="row">스레드</th><td>메시지의 <strong>스레드</strong> 또는 댓글 수를 눌러 답글을 이어갑니다. 같은 질문의 추가 정보는 해당 스레드에 남기세요.</td></tr>
+            <tr><th scope="row">업보트</th><td>같은 문제가 있다면 <strong>업보트</strong>를 누릅니다. 질문 채널은 업보트가 많은 순으로 표시됩니다. 해결 표시는 운영자가 처리합니다.</td></tr>
+            <tr><th scope="row">잡담</th><td>가벼운 대화에 사용합니다. 대규모 설정으로 처음 배포한 워크샵에는 표시되지 않을 수 있습니다.</td></tr>
+            <tr><th scope="row">링크 복사</th><td>특정 메시지나 스레드의 위치를 공유합니다. 받는 사람도 같은 워크샵에 입장해야 확인할 수 있습니다.</td></tr>
+          </tbody>
+        </table></div>
+        <p><kbd>Enter</kbd>로 보내고 <kbd>Shift</kbd> + <kbd>Enter</kbd>로 줄을 바꿉니다. Markdown 코드 블록을 사용하면 오류 로그와 명령어를 읽기 쉽게 전달할 수 있습니다. 상단에서 한국어·영어와 다크·프로젝터 모드를 전환할 수 있습니다.</p>
+        <h3>파일 첨부와 미리보기</h3>
+        <p>입력창의 📎 버튼으로 파일을 선택하고 짧은 설명을 작성한 뒤 <strong>보내기</strong>를 누르세요. 채널 입력창에는 클립보드 이미지도 붙여넣을 수 있습니다. 이미지·PDF·HTML은 채팅 안에서 미리 볼 수 있고, 스레드 답글과 운영자 메시지에도 첨부할 수 있습니다.</p>
+        <div class="table-wrap"><table>
+          <thead><tr><th scope="col">채팅 첨부 유형</th><th scope="col">파일당 최대 크기</th></tr></thead>
+          <tbody><tr><td>PNG, JPEG, GIF, WebP</td><td>15 MB</td></tr><tr><td>PDF, Word, Excel, PowerPoint, ZIP</td><td>25 MB</td></tr><tr><td>TXT, CSV, HTML</td><td>5 MB</td></tr><tr><td>MP4</td><td>50 MB</td></tr></tbody>
+        </table></div>
+        <p class="muted">HTML 미리보기에서는 스크립트가 실행되지 않습니다. 파일을 올렸다는 것만으로 AI의 참고 문서가 되지는 않습니다. AI 문서는 운영자가 별도로 등록합니다.</p>
+        <h3>AI 도우미에게 물어보기</h3>
+        <p>왼쪽의 <strong>AI 도우미</strong>를 열고 랩 가이드에 대한 질문을 입력하세요. 답변은 생성되는 대로 표시되며, 참고 문서가 있으면 함께 표시됩니다. <strong>도움됨</strong> 또는 <strong>가이드에 없음</strong>으로 피드백을 남길 수 있습니다.</p>
+        <div class="callout"><strong>AI 질문은 운영자가 확인할 수 있습니다.</strong><p>다른 참가자의 채팅 타임라인에는 공개되지 않지만 운영자의 AI 로그와 내보내기에는 포함됩니다. 비밀번호나 자격증명을 입력하지 마세요. 기본 질문 한도는 참가자별 하루 30회이며, 해결되지 않는 문제는 질문 채널에 남기세요.</p></div>
+      </section>
+
+      <section id="nickname" class="content-section">
+        <div class="section-kicker">NICKNAME ENTRY</div>
+        <h2>닉네임과 재접속, 알아둘 점.</h2>
+        <div class="two-columns">
+          <div class="info-card"><h3>이름 규칙</h3><p>앞뒤 공백을 제외하고 <strong>1~20자</strong>를 입력합니다. <code>admin</code>, <code>administrator</code>, <code>operator</code>, <code>운영자</code>, <code>관리자</code>, 설정된 운영자 ID는 사용할 수 없습니다. 제어 문자와 보이지 않는 형식 문자도 허용하지 않습니다.</p></div>
+          <div class="info-card"><h3>같은 브라우저를 유지하세요</h3><p>유효한 세션 쿠키가 남아 있으면 새로고침해도 같은 참가자로 유지됩니다. 현재 세션 유효기간은 로그인 시점부터 4일입니다. 닉네임은 이전 참가자 정보를 복구하는 수단이 아닙니다.</p></div>
+        </div>
+        <div class="callout warning"><strong>로그아웃 후 다시 입장하면 새 참가자입니다.</strong><p>쿠키 삭제·만료, 새 브라우저·기기에서의 입장도 새 익명 참가자 ID를 만듭니다. 같은 닉네임을 다시 입력해도 이전 ID로 돌아가지 않으며, 서로 다른 사람이 같은 닉네임을 사용할 수도 있습니다. 워크샵 중에는 같은 브라우저를 유지하세요.</p></div>
+        <p>운영자는 닉네임과 별도의 참가자 ID를 함께 확인합니다. 닉네임으로 입장해도 운영자 권한이 부여되지 않으며, 운영자는 항상 별도 로그인 경로를 사용합니다.</p>
+      </section>
+
+      <section id="deploy" class="content-section">
+        <div class="section-kicker">DEPLOY TO AWS</div>
+        <h2>워크샵 계정에 배포하기.</h2>
+        <p>앱은 CloudFront·WAF → ALB → ECS Fargate 구조로 실행되며, DynamoDB에 상태를 저장합니다. Cognito는 운영자 인증에, S3는 첨부·가이드·내보내기에, Bedrock은 AI 답변에 사용합니다. GitHub Pages에는 이 설명서가 게시되고 실제 앱은 AWS에서 실행됩니다.</p>
+        <h3>1. 배포 환경 준비</h3>
+        <p>Git, Node.js 22, npm, AWS CLI, 실행 중인 Docker와 <code>linux/arm64</code> 이미지 빌드 환경이 필요합니다. x86 호스트라면 Docker의 ARM 빌드 지원도 준비하세요. 사용할 AWS 프로필에 CDK 리소스를 생성할 권한과 선택한 리전의 Bedrock 모델 접근 권한이 있어야 합니다.</p>
+        <p>다음 예제는 <strong>Bash</strong> 기준입니다. 값을 실제 환경으로 바꾸고 같은 터미널에서 순서대로 실행하세요. 루트의 <code>npm ci</code>는 공통 lockfile과 npm workspaces 설정에 따라 <code>app</code>·<code>infra</code>·<code>web</code> 의존성을 함께 설치합니다.</p>
+        <pre><code class="language-bash">git clone https://github.com/Atom-oh/aws-workshop-chat.git
+cd aws-workshop-chat
+npm ci
+
+WORKSHOP_AWS_PROFILE="your-workshop-profile"
+WORKSHOP_REGION="ap-northeast-2"
+WORKSHOP_BEDROCK_REGION="us-east-1"
+WORKSHOP_NAME="my-workshop"
+WORKSHOP_MODEL_ID="REPLACE_WITH_ACCESSIBLE_MODEL_OR_INFERENCE_PROFILE_ID"
+
+aws sts get-caller-identity --profile "$WORKSHOP_AWS_PROFILE"</code></pre>
+        <p>반환된 계정과 역할이 워크샵 대상인지 확인하세요. <code>WORKSHOP_MODEL_ID</code>는 대상 Bedrock 리전에서 접근 가능한 Converse 지원 모델 또는 추론 프로필 ID로 교체합니다. 위 값은 자리표시자입니다. 워크샵 환경에서 허용되는 리전에 맞춰 <code>WORKSHOP_BEDROCK_REGION</code>도 설정하세요.</p>
+        <h3>2. 가이드 문서와 CDK 설정 준비</h3>
+        <p>저장소의 <code>guide/</code> 예제 Markdown을 실제 실습 가이드로 교체합니다. 다음은 참가자 120명, 닉네임 입장, 대규모 채널 구성 예제입니다.</p>
+        <pre><code class="language-bash">cd infra
+WORKSHOP_CONTEXT=(
+  --context "workshopName=$WORKSHOP_NAME"
+  --context "scale=large"
+  --context "bedrockModelId=$WORKSHOP_MODEL_ID"
+  --context "bedrockRegion=$WORKSHOP_BEDROCK_REGION"
+  --context "adminUsername=admin@ws"
+  --context "participantPassphrase=legacy-unused-setting"
+  --context "participantCount=120"
+  --context "participantAuthMode=nickname"
+  --context "enableKnowledgeBase=true"
+)
+
+WORKSHOP_ACCOUNT="$(aws sts get-caller-identity \
+  --profile "$WORKSHOP_AWS_PROFILE" --query Account --output text)"
+
+AWS_REGION="$WORKSHOP_REGION" npx cdk bootstrap \
+  "aws://$WORKSHOP_ACCOUNT/$WORKSHOP_REGION" \
+  "aws://$WORKSHOP_ACCOUNT/us-east-1" \
+  "aws://$WORKSHOP_ACCOUNT/$WORKSHOP_BEDROCK_REGION" \
+  --profile "$WORKSHOP_AWS_PROFILE" "${WORKSHOP_CONTEXT[@]}"</code></pre>
+        <p>각 계정·리전의 CDK bootstrap은 최초 한 번 필요합니다. 앱 리전 외에 CloudFront용 WAF가 배포되는 <code>us-east-1</code>, Knowledge Base가 배포되는 Bedrock 리전도 준비합니다. 이미 bootstrap된 환경은 재사용할 수 있습니다.</p>
+        <h3>3. 배포하고 접속 주소 확인</h3>
+        <pre><code class="language-bash">AWS_REGION="$WORKSHOP_REGION" npx cdk deploy --all \
+  --profile "$WORKSHOP_AWS_PROFILE" \
+  "${WORKSHOP_CONTEXT[@]}" \
+  --outputs-file workshop-outputs.json</code></pre>
+        <p>변경 내용을 확인해 CDK의 승인을 진행합니다. CDK가 ARM64 컨테이너를 빌드·업로드하고 관련 스택을 배포합니다. 배포가 끝나면 <code>workshop-outputs.json</code>과 터미널 출력에서 아래 값을 확인하세요. 출력 파일에는 운영용 리소스 정보가 있으므로 공개 저장소에 커밋하지 마세요.</p>
+        <div class="table-wrap"><table>
+          <thead><tr><th scope="col">출력</th><th scope="col">용도</th></tr></thead>
+          <tbody>
+            <tr><th scope="row"><code>AppUrl</code></th><td>참가자가 접속하는 HTTPS 공용 주소</td></tr>
+            <tr><th scope="row"><code>OperatorConsoleUrl</code></th><td>운영자 로그인 주소: <code>AppUrl/operator</code></td></tr>
+            <tr><th scope="row"><code>OperatorUsername</code></th><td>운영자 ID</td></tr>
+            <tr><th scope="row"><code>OperatorCredentialsCommand</code></th><td>Secrets Manager에서 운영자 비밀번호를 조회하는 명령. 실행할 때 배포 프로필의 <code>--profile</code>을 추가하세요.</td></tr>
+            <tr><th scope="row"><code>GuideBucketPath</code> / <code>GuideSyncCommand</code></th><td>가이드 문서 위치 / KB 수집 명령(KB 사용 시). 명령에는 배포 프로필을 추가하세요.</td></tr>
+            <tr><th scope="row"><code>ExportBucketPath</code></th><td>최신 xlsx 파일의 S3 경로</td></tr>
+            <tr><th scope="row"><code>CloudWatchMetricsLink</code></th><td>운영 지표 확인</td></tr>
+          </tbody>
+        </table></div>
+        <h3>4. 참가자를 초대하기 전에 확인</h3>
+        <ol><li><code>OperatorConsoleUrl</code>에서 운영자 로그인 후 가이드 문서를 재인덱싱합니다.</li><li>별도 브라우저로 <code>AppUrl</code>을 열어 닉네임 입장, 질문 작성·답글, 파일 첨부를 확인합니다.</li><li>AI가 실제 가이드에 근거해 답변하는지 확인하고, 운영자의 질문 보드와 내보내기도 점검합니다.</li><li>확인이 끝나면 참가자에게 공용 링크를 배포합니다.</li></ol>
+        <details><summary>인증 모드 선택과 인원 설정</summary>
+          <p><code>participantAuthMode=nickname</code>은 공용 링크와 닉네임을 사용하고, <code>participantAuthMode=cognito</code>는 개별 계정과 조인 링크를 사용합니다. 아무 설정도 주지 않으면 CDK와 서버의 기본값은 <strong>cognito</strong>입니다.</p>
+          <p><code>PARTICIPANT_AUTH_MODE=nickname</code> 환경변수로도 설정할 수 있지만 명시적인 CDK context가 우선합니다. 환경변수로 전환할 때는 context에 남아 있는 <code>participantAuthMode</code>도 확인하세요.</p>
+          <p>닉네임 모드에서 <code>participantCount</code>는 목표 인원이며 입장 상한이 아닙니다. 참가자 Cognito 계정은 사전 생성하지 않지만 Cognito와 운영자 계정은 유지됩니다. <code>participantPassphrase</code>와 <code>bedrockModelId</code>는 두 모드 모두 필수 설정입니다. legacy passphrase는 공통 로그인 암호가 아닙니다.</p>
+        </details>
+        <details><summary>Bedrock 리전, Knowledge Base, 사용자 지정 도메인</summary>
+          <p><code>bedrockRegion</code>을 지정하면 AI 모델 호출과 Knowledge Base·S3 Vectors·가이드 버킷을 해당 리전에서 사용합니다. 생략하면 앱 리전을 따릅니다. 선택한 리전에서 모델과 S3 Vectors 지원 여부를 확인하세요.</p>
+          <p>KB를 사용할 수 없으면 <code>enableKnowledgeBase=false</code>로 배포할 수 있습니다. 이 경우 현재 앱은 <code>.md</code> 파일의 텍스트만 최대 60,000자까지 AI 프롬프트에 넣습니다. PDF·HTML 등의 업로드를 Markdown처럼 사용한다고 가정하지 마세요.</p>
+          <p>도메인을 연결하려면 기존 context에 <code>domainName</code>, <code>hostedZoneId</code>, <code>certificateArn</code>을 함께 지정합니다. 공개 Route 53 영역과 해당 도메인을 포함하는 <code>us-east-1</code>의 ACM 인증서가 필요합니다. 생략하면 CloudFront 주소를 사용합니다.</p>
+        </details>
+        <details><summary>로컬에서 닉네임 입장 먼저 체험하기</summary>
+          <p>저장소 루트에서 아래 명령을 실행하고 <code>http://localhost:3000</code>을 엽니다. Docker Compose는 기본적으로 닉네임 모드를 사용합니다. 참가자 채팅은 DynamoDB Local로 동작하지만 운영자 로그인에는 실제 Cognito 설정, AI에는 Bedrock, 파일 기능에는 S3 설정이 필요합니다.</p>
+          <pre><code class="language-bash">docker compose up --build</code></pre>
+        </details>
+      </section>
+
+      <section id="update" class="content-section">
+        <div class="section-kicker">UPDATE AN EXISTING WORKSHOP</div>
+        <h2>기존 환경에 닉네임 입장 반영하기.</h2>
+        <p>배포에 사용한 소스의 최신 <code>main</code>을 받고 <strong>기존 계정·앱 리전·workshopName·Bedrock 설정·도메인·인원·관리자 설정</strong>을 유지하세요. 위의 예제 값을 기존 환경에 그대로 덮어쓰지 마세요. 워크샵 이름이나 리전을 바꾸면 기존 스택 업데이트가 아닌 새 배포가 될 수 있습니다.</p>
+        <ol><li>기존 배포에서 사용한 설정으로 <code>WORKSHOP_CONTEXT</code>를 구성하고 <code>participantAuthMode=nickname</code>을 명시합니다.</li><li>아래 <code>cdk diff</code>에서 리소스 변경을 확인하고 <code>cdk deploy --all</code>로 반영합니다.</li><li>기존 운영자 로그인과 새 참가자 입장을 확인한 뒤 공용 <code>AppUrl</code>을 다시 안내합니다.</li></ol>
+        <pre><code class="language-bash"># 저장소 루트에서, 작업 중인 변경을 먼저 정리한 뒤 실행
+git switch main
+git pull --ff-only
+npm ci
+cd infra
+
+# 위 안내대로 기존 배포의 변수와 WORKSHOP_CONTEXT를 구성한 상태
+AWS_REGION="$WORKSHOP_REGION" npx cdk diff --all \
+  --profile "$WORKSHOP_AWS_PROFILE" "${WORKSHOP_CONTEXT[@]}"
+AWS_REGION="$WORKSHOP_REGION" npx cdk deploy --all \
+  --profile "$WORKSHOP_AWS_PROFILE" "${WORKSHOP_CONTEXT[@]}"</code></pre>
+        <div class="callout warning"><strong>모드를 바꾸면 참가자는 다시 입장해야 합니다.</strong><p>이전 모드의 참가자 세션과 조인 링크는 새 모드에서 유효하지 않습니다. 운영자 세션은 두 모드에서 동작합니다. 기존 Cognito 참가자 계정은 삭제되지 않지만 닉네임 입장과 자동 연결되지 않습니다. 이후 재배포에서도 같은 모드를 명시하세요.</p></div>
+      </section>
+
+      <section id="operator" class="content-section">
+        <div class="section-kicker">FOR OPERATORS</div>
+        <h2>운영은 질문 보드에서 시작하세요.</h2>
+        <p><a href="https://workshop-chat.atomai.click/operator?view=questions">현재 워크샵 운영자 질문 보드</a>를 엽니다. 별도 배포에서는 <code>AppUrl/operator</code> 또는 입장 화면의 <strong>운영자 로그인</strong>으로 이동합니다. 배포 출력의 운영자 ID와 Secrets Manager에서 조회한 비밀번호를 사용하세요. 참가자가 닉네임을 사용해도 운영자는 항상 Cognito로 인증합니다.</p>
+        <div class="table-wrap"><table>
+          <thead><tr><th scope="col">운영 메뉴</th><th scope="col">할 일</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">로스터 · 참가자 관리</th><td>닉네임 모드에서는 공용 링크를 복사해 공유하고, 실제 입장한 참가자의 닉네임·ID를 확인합니다. Cognito 모드에서는 개별 조인 링크와 CSV를 제공합니다. 참가자 차단·해제도 여기서 관리합니다.</td></tr>
+            <tr><th scope="row">참여 현황</th><td>닉네임 모드는 실제 등록 수와 목표 인원을 비교합니다. 사전 명단이 없어 특정 미입장자를 찾을 수 없고, 같은 사람의 새 세션도 별도 참가자로 집계될 수 있습니다.</td></tr>
+            <tr><th scope="row">질문 보드</th><td>미해결 질문을 확인하고 스레드로 답변한 뒤 <strong>해결로 표시</strong>합니다. 질문 목록은 15초마다 새로고침됩니다.</td></tr>
+            <tr><th scope="row">랩 스텝</th><td>상단에 현재 실습 단계를 입력하고 <kbd>Enter</kbd>를 누릅니다. 이후 작성되는 질문과 AI 질문에 해당 단계가 기록됩니다.</td></tr>
+            <tr><th scope="row">공지 / 채널</th><td>공지와 파일을 게시하고 필요한 메시지를 공지로 올립니다. 부적절한 메시지는 삭제할 수 있습니다.</td></tr>
+            <tr><th scope="row">AI 도우미 로그</th><td>AI 질문·답변과 피드백을 확인합니다. 가이드에서 해결되지 않은 질문을 다음 안내와 문서 개선에 활용하세요.</td></tr>
+          </tbody>
+        </table></div>
+        <p>닉네임 참여 현황의 기준 인원은 목표 인원과 실제 등록 수 중 큰 값입니다. 목표 120명에 125개 ID가 등록되면 기준도 125명이 됩니다. 등록 수는 현재 온라인 인원이나 중복을 제거한 실참석자 수와 다릅니다.</p>
+      </section>
+
+      <section id="guide-docs" class="content-section">
+        <div class="section-kicker">GIVE AI THE RIGHT CONTEXT</div>
+        <h2>실습 가이드를 AI에 연결하기.</h2>
+        <p>운영자 화면의 <strong>랩 가이드 문서</strong>는 AI 참고 자료 관리용입니다. 참가자에게 파일 목록을 보여주는 자료실은 아닙니다. 참가자에게도 문서를 배포하려면 공지에 링크나 파일을 따로 게시하세요.</p>
+        <ol class="steps">
+          <li><strong>파일 선택으로 실제 가이드 업로드</strong><p>KB 사용 시 TXT·Markdown·HTML·Word·CSV·Excel·PDF는 최대 50 MB, JPEG·PNG는 최대 3.75 MB입니다. 채팅 첨부 제한과 다릅니다.</p></li>
+          <li><strong>사용 중 / 제외 상태 확인</strong><p>해당 워크샵에서 사용할 문서만 활성화합니다. 운영 중 추가한 파일은 이후 CDK 배포에서도 유지됩니다.</p></li>
+          <li><strong>지금 재인덱싱 실행</strong><p>KB 사용 시 최초 배포 후와 문서 업로드·제외·삭제 후에 실행합니다. 업로드만으로 KB의 수집이 시작되지는 않습니다. 문서별 <strong>인덱싱됨</strong> 상태와 실패 문서 수를 확인하고 AI 질문으로 결과를 검증하세요.</p></li>
+        </ol>
+        <p>S3에 직접 업로드할 때는 <code>GuideBucketPath</code>의 <code>guide/</code> 경로를 사용하고, 출력된 <code>GuideSyncCommand</code>에 배포 프로필을 추가해 실행합니다. 이 명령은 앱 리전이 아닌 <strong>Bedrock 리전</strong>에서 수집합니다.</p>
+        <div class="callout"><strong>KB를 끈 환경은 Markdown 전용입니다.</strong><p>현재 fallback은 활성 <code>.md</code> 문서의 텍스트를 최대 60,000자 읽습니다. 운영자 화면에서 변경하면 캐시가 갱신되지만 S3를 직접 수정하면 앱 재시작이 필요합니다. KB 인덱싱 상태 대신 실제 답변으로 반영 여부를 확인하세요.</p></div>
+      </section>
+
+      <section id="finish" class="content-section">
+        <div class="section-kicker">CLOSE THE WORKSHOP</div>
+        <h2>종료 전에 결과를 내려받으세요.</h2>
+        <p>운영자 상단에서 <strong>지금 내보내기</strong>를 누르고 완료 후 <strong>다운로드</strong>로 xlsx를 저장합니다. <code>Questions</code>, <code>AI_Queries</code>, <code>Participants</code>, <code>Timeline</code> 데이터 시트와 생성 시각·시트별 행 수를 담은 <code>Meta</code>까지 총 5개 시트가 생성됩니다. 참가자 시트에서 ID와 닉네임을 연결해 확인할 수 있습니다.</p>
+        <p>앱은 15분마다 S3의 <code>exports/latest.xlsx</code>를 갱신하지만, 워크샵 계정 밖에 자동 보관하지는 않습니다. xlsx는 첨부파일 원본을 묶은 백업이 아니므로 필요한 미디어와 가이드도 별도로 저장하세요.</p>
+        <div class="callout warning"><strong>스택이나 워크샵 계정이 삭제되면 데이터도 사라집니다.</strong><p>메시지, 첨부, 가이드, S3의 xlsx 모두 배포한 리소스 안에 있습니다. 파일을 직접 열어 저장을 확인한 뒤 종료하세요. 운영 중 장애에 대비한 별도 연락 채널도 미리 안내해 두세요.</p></div>
+        <details><summary>배포 담당자: AWS 리소스 삭제</summary>
+          <p>데이터 보관이 끝났고 실제 종료할 때만 실행하세요. <code>infra/</code>에서 원래 배포의 계정·리전·이름과 context를 그대로 사용합니다. 관련 스택 전체를 삭제하므로 결과를 복구할 수 없습니다. 위 배포 명령이 구성한 Bash 변수와 배열이 필요합니다.</p>
+          <pre><code class="language-bash">aws sts get-caller-identity --profile "$WORKSHOP_AWS_PROFILE"
+AWS_REGION="$WORKSHOP_REGION" npx cdk destroy --all \
+  --profile "$WORKSHOP_AWS_PROFILE" "${WORKSHOP_CONTEXT[@]}"</code></pre>
+          <p>CloudFormation에서 앱, WAF, Bedrock 관련 스택의 삭제 완료를 확인합니다. CDK bootstrap 환경은 워크샵 스택과 별도로 관리됩니다. 운영 비용은 리전·가동 시간·AI 사용량에 따라 발생하므로 행사 후 리소스를 계속 켜 두지 마세요.</p>
+        </details>
+      </section>
+
+      <section id="troubleshooting" class="content-section">
+        <div class="section-kicker">TROUBLESHOOTING</div>
+        <h2>막혔을 때 확인할 것.</h2>
+        <details><summary>닉네임 입력란 대신 ID·비밀번호가 표시됩니다.</summary><p>현재 배포가 Cognito 모드이거나 <code>/operator</code> 경로를 열었을 수 있습니다. 참가자는 공용 <code>AppUrl</code>을 여세요. 배포 담당자는 <code>participantAuthMode</code> context가 환경변수보다 우선하는지 확인하고 닉네임 모드로 재배포하세요.</p></details>
+        <details><summary>같은 닉네임인데 이전 참가자로 돌아오지 않습니다.</summary><p>닉네임은 고유 계정이나 복구 암호가 아닙니다. 로그아웃·쿠키 삭제·만료·새 브라우저 입장은 새 ID를 만듭니다. 이미 새로 입장했다면 운영자에게 이전 ID와 구분해서 확인해 달라고 요청하세요.</p></details>
+        <details><summary>닉네임을 사용할 수 없다고 나옵니다.</summary><p>1~20자인지, 운영자·관리자용 이름을 쓰지 않았는지 확인하세요. 복사한 이름에 보이지 않는 문자가 포함될 수 있으니 직접 다시 입력해 보세요. 운영자 ID의 대소문자나 전각 문자 변형도 사용할 수 없습니다.</p></details>
+        <details><summary>AI가 새 문서를 참고하지 않습니다.</summary><p>문서가 사용 중인지, KB 재인덱싱이 완료됐는지, 실패 또는 재시도 소진 상태인지 확인하세요. 크기와 형식 제한도 확인합니다. KB를 끈 환경에서는 현재 Markdown만 읽습니다. S3 직접 변경 시에는 KB 수집 또는 fallback 앱 재시작이 필요합니다.</p></details>
+        <details><summary>AI 호출만 실패합니다.</summary><p>배포 담당자는 선택한 모델·추론 프로필과 <code>bedrockRegion</code>, 계정의 모델 접근 및 호출 권한을 확인하세요. 스택 배포 성공만으로 모델 호출 성공이 보장되지는 않습니다. 참가자는 질문 채널에서 도움을 받을 수 있습니다.</p></details>
+        <details><summary>파일이 업로드되지 않거나 HTML 동작이 다릅니다.</summary><p>채팅 첨부의 지원 형식과 크기를 확인하세요. 실행 파일 등 지원 목록 밖의 형식은 허용되지 않습니다. HTML 미리보기는 스크립트를 실행하지 않으므로 대화형 페이지와 다르게 보일 수 있습니다.</p></details>
+        <details><summary>운영자 로그인이 안 됩니다.</summary><p><code>OperatorConsoleUrl</code>에서 배포 출력의 운영자 ID와 Secrets Manager의 현재 비밀번호를 사용하세요. 닉네임이나 legacy passphrase로 로그인할 수 없습니다. 배포 담당자는 해당 Cognito 사용자가 <code>admin</code> 그룹에 속하는지도 확인합니다.</p></details>
+      </section>
+      <footer><span>Workshop Chat · 배포와 사용 가이드</span><span>2026. 09. 23. 업데이트 · 닉네임 입장 반영</span><a href="#overview">맨 위로 ↑</a></footer>
+    </main>
+  </div>
+  <div class="copy-status" role="status" aria-live="polite"></div>
+</body>
+</html>
