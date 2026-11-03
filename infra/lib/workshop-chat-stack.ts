@@ -331,7 +331,7 @@ export class WorkshopChatStack extends Stack {
     // ---------- Credential provisioning (Custom Resource) ----------
     const credentialsFn = new NodejsFunction(this, "CredentialsProvider", {
       entry: path.join(__dirname, "../lambda/credentials-handler.ts"),
-      runtime: Runtime.NODEJS_20_X,
+      runtime: Runtime.NODEJS_24_X,
       timeout: Duration.minutes(14),
       memorySize: 512,
     });
