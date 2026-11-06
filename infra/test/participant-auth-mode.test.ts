@@ -14,6 +14,7 @@ const defaultContext = {
   participantPassphrase: "test-passphrase",
   participantCount: "120",
   enableKnowledgeBase: "false",
+  vpcId: "vpc-12345",
   "availability-zones:account=123456789012:region=us-east-1": ["us-east-1a", "us-east-1b"],
 };
 
