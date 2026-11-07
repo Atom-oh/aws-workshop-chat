@@ -40,7 +40,11 @@ const certificateArn = app.node.tryGetContext("certificateArn");
 // flag not at all.
 const bedrockRegion = app.node.tryGetContext("bedrockRegion") ?? process.env.CDK_DEFAULT_REGION;
 
-for (const [key, value] of Object.entries({ bedrockModelId, participantPassphrase })) {
+// Required — the stack never creates its own VPC; it deploys into an existing one with private
+// subnets that have NAT egress.
+const vpcId = app.node.tryGetContext("vpcId");
+
+for (const [key, value] of Object.entries({ bedrockModelId, participantPassphrase, vpcId })) {
   if (!value) {
     throw new Error(`Missing required --context ${key}=... (see README.md for the full deploy command)`);
   }
@@ -85,6 +89,7 @@ new WorkshopChatStack(app, `${workshopName}-WorkshopChat`, {
   hostedZoneId,
   hostedZoneName,
   certificateArn,
+  vpcId,
   crossRegionReferences: true,
   env: {
     account: process.env.CDK_DEFAULT_ACCOUNT,

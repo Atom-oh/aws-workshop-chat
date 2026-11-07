@@ -43,10 +43,10 @@ the spec).
 The original spec called for AppSync Events for realtime. This app uses a plain in-process
 WebSocket hub instead (`app/src/ws/hub.ts`) — a `Map<channel, Set<socket>>` and a `for` loop to
 broadcast. That only works within one process, so `desiredCount` is pinned to **1**. This is a
-known, deliberate ceiling, not an oversight: load-tested at 500 concurrent WebSocket clients (the
-spec's stated maximum) on a single 1 vCPU / 2 GB task with **p50 17ms / p95 20ms** broadcast
-latency and zero dropped deliveries (`npm run loadtest`, see below). AppSync Events would buy
-horizontal scaling this app will never need, in exchange for a namespace, channel-authorization
+known, deliberate ceiling, not an oversight: a historical local test reached 500 concurrent
+WebSocket clients on a single 1 vCPU / 2 GB container. The load-test script needs an auth update
+before those results can be repeated against the current app (see Load test below). AppSync Events
+would buy horizontal scaling this app will never need, in exchange for a namespace, channel-authorization
 handlers, and a client SDK it doesn't need either. If a future workshop ever needs more than one
 task, fan out via DynamoDB Streams instead of reaching for AppSync — see the comment in `hub.ts`.
 
@@ -105,6 +105,21 @@ The xlsx export uses `participantId` columns for the same reason.
 
 ## Deploy
 
+### Current workshop-chat deployment
+
+As checked on 2026-11-06, [workshop-chat](https://workshop-chat.atomai.click) runs in
+`ap-northeast-2` with nickname participant entry, 150 expected participants, and one 1 vCPU / 2 GB
+Fargate task. The operator signs in at `/operator` as `admin@ws`; retrieve the password from the
+stack's `OperatorCredentialsCommand` output. The AI model is Claude Sonnet 5.5, using the Bedrock
+inference profile `global.anthropic.claude-sonnet-5-5` and a Knowledge Base. The deployment reuses
+an existing VPC with a private ALB and CloudFront VPC origin.
+
+Operator and nickname logins, WebSocket connection, XLSX export, and a streamed AI answer were
+verified on that date. Before a workshop, confirm the guide content and rehearse chat delivery
+at the expected attendance. The single task can interrupt WebSocket connections during a restart;
+download the XLSX export to a separate location because DynamoDB point-in-time recovery is disabled
+in this deployment.
+
 ```bash
 cd infra
 npm install
@@ -112,11 +127,12 @@ npx cdk bootstrap   # once per account/region, if not already done
 npx cdk deploy --all \
   --context workshopName="woori-1030" \
   --context scale="large" \
-  --context bedrockModelId="global.anthropic.claude-sonnet-5" \
+  --context bedrockModelId="global.anthropic.claude-sonnet-5-5" \
   --context adminUsername="admin@ws" \
   --context participantPassphrase="woori-1030" \
   --context participantCount="120" \
-  --context enableKnowledgeBase="true"
+  --context enableKnowledgeBase="true" \
+  --context vpcId="vpc-xxxxxxxx"
 ```
 
 That command retains the default Cognito participant flow. To enable nickname entry, use the
@@ -127,11 +143,12 @@ same deployment options with the environment variable:
 PARTICIPANT_AUTH_MODE=nickname npx cdk deploy --all \
   --context workshopName="woori-1030" \
   --context scale="large" \
-  --context bedrockModelId="global.anthropic.claude-sonnet-5" \
+  --context bedrockModelId="global.anthropic.claude-sonnet-5-5" \
   --context adminUsername="admin@ws" \
   --context participantPassphrase="woori-1030" \
   --context participantCount="120" \
-  --context enableKnowledgeBase="true"
+  --context enableKnowledgeBase="true" \
+  --context vpcId="vpc-xxxxxxxx"
 ```
 
 Optional `--context participantAuthMode="nickname"` (or `"cognito"`) takes precedence over
@@ -320,14 +337,12 @@ participant provisioning count, and stable Cognito/operator resources. They do n
 
 ### Load test
 
-```bash
-docker compose up -d
-npm run loadtest -- --clients 60
-npm run loadtest -- --clients 500
-```
+`test/load.ts` currently calls the removed `/api/login/passphrase` endpoint. Update its login
+flow before running it against the current nickname or Cognito modes; it also writes test
+messages and participant data to its target. The figures below are historical local measurements,
+not a capacity verification of the current deployment.
 
-Measured on this app (single container, local Docker, so treat as a floor, not a ceiling on real
-Fargate networking):
+Measured on a single local Docker container:
 
 | Clients | Broadcast latency (p50 / p95) | Dropped deliveries |
 |---|---|---|
@@ -349,8 +364,10 @@ Rough order of magnitude for a 3-day workshop at moderate use (ap-northeast-2 pr
 | Bedrock (Converse + Retrieve) | Depends entirely on usage; the per-participant daily AI quota (`AI_DAILY_QUOTA`, default 30) bounds the worst case |
 | S3 Vectors + Knowledge Base | Low single digits; no OpenSearch Serverless minimum |
 
-**No NAT gateway** — the Fargate task runs in public subnets with a security group instead,
-which is the largest single line item this design avoids.
+**No VPC of its own** — `vpcId` names an existing VPC; the Fargate task and an internal ALB sit
+in its private subnets (NAT egress required for Bedrock/Cognito/AWS Knowledge MCP), and
+CloudFront reaches the ALB through a VPC origin. The ALB security group admits only the
+CloudFront origin-facing managed prefix list; nothing in the stack has a public IP.
 
 ## Destroy
 

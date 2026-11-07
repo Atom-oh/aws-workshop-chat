@@ -55,6 +55,8 @@ export interface WorkshopChatStackProps extends StackProps {
   hostedZoneId?: string;
   hostedZoneName?: string;
   certificateArn?: string;
+  /** Existing VPC to deploy into (looked up at synth time); needs private subnets with NAT egress. */
+  vpcId: string;
 }
 
 export class WorkshopChatStack extends Stack {
@@ -153,13 +155,10 @@ export class WorkshopChatStack extends Stack {
     });
 
     // ---------- Networking ----------
-    const vpc = new ec2.Vpc(this, "Vpc", {
-      maxAzs: 2,
-      natGateways: 0, // ponytail: the app task needs no private egress; public subnets + a
-      // security group are enough, and this is the difference between a NAT gateway bill and
-      // none for a 3-day stack.
-      subnetConfiguration: [{ name: "public", subnetType: ec2.SubnetType.PUBLIC }],
-    });
+    // Reuse an existing VPC instead of owning one. Tasks and the ALB sit in its private subnets;
+    // the task still needs NAT egress (Bedrock, Cognito, the public AWS Knowledge MCP server).
+    const vpc = ec2.Vpc.fromLookup(this, "Vpc", { vpcId: props.vpcId });
+    const privateSubnets: ec2.SubnetSelection = { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS };
 
     // ---------- Fargate ----------
     const cluster = new ecs.Cluster(this, "Cluster", { vpc });
@@ -267,12 +266,19 @@ export class WorkshopChatStack extends Stack {
       cluster,
       taskDefinition: taskDef,
       desiredCount: 1, // ponytail: single task by design — see plan's §7 deviation on realtime
-      assignPublicIp: true,
-      vpcSubnets: { subnetType: ec2.SubnetType.PUBLIC },
+      assignPublicIp: false,
+      vpcSubnets: privateSubnets,
     });
 
-    const alb = new elbv2.ApplicationLoadBalancer(this, "Alb", { vpc, internetFacing: true });
-    const listener = alb.addListener("Listener", { port: 80, open: true });
+    // Internal ALB reached only through a CloudFront VPC origin. The managed prefix list (rather
+    // than the CloudFront-VPCOrigins-Service-SG) works before the VPC origin exists, so a fresh
+    // deploy needs no second pass.
+    const alb = new elbv2.ApplicationLoadBalancer(this, "Alb", { vpc, internetFacing: false, vpcSubnets: privateSubnets });
+    const cloudfrontPrefixList = ec2.PrefixList.fromLookup(this, "CloudFrontOriginFacing", {
+      prefixListName: "com.amazonaws.global.cloudfront.origin-facing",
+    });
+    alb.connections.allowFrom(ec2.Peer.prefixList(cloudfrontPrefixList.prefixListId), ec2.Port.tcp(80), "CloudFront VPC origin");
+    const listener = alb.addListener("Listener", { port: 80, open: false });
     listener.addTargets("AppTargets", {
       port: 3000,
       protocol: elbv2.ApplicationProtocol.HTTP,
@@ -281,7 +287,9 @@ export class WorkshopChatStack extends Stack {
     });
 
     // ---------- CloudFront ----------
-    const origin = new origins.LoadBalancerV2Origin(alb, { protocolPolicy: cloudfront.OriginProtocolPolicy.HTTP_ONLY });
+    const origin = origins.VpcOrigin.withApplicationLoadBalancer(alb, {
+      protocolPolicy: cloudfront.OriginProtocolPolicy.HTTP_ONLY,
+    });
     const noCacheBehavior: cloudfront.BehaviorOptions = {
       origin,
       viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
