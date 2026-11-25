@@ -30,8 +30,15 @@ export function mockDatabase(t: TestContext) {
         i.pk === values[":pk"] && (!values[":prefix"] || i.sk.startsWith(values[":prefix"]))) };
     }
     if (command instanceof UpdateCommand) {
+      if (input.ConditionExpression === "attribute_exists(pk)" && !items.has(keyOf(input.Key))) {
+        throw Object.assign(new Error("The conditional request failed"), { name: "ConditionalCheckFailedException" });
+      }
       const item = items.get(keyOf(input.Key)) ?? { ...input.Key };
       if (input.UpdateExpression.includes("replyCount")) item.replyCount = (item.replyCount ?? 0) + 1;
+      if (input.UpdateExpression.includes("editedAt")) {
+        item.body = input.ExpressionAttributeValues[":body"];
+        item.editedAt = input.ExpressionAttributeValues[":editedAt"];
+      }
       items.set(keyOf(item), item);
       return { Attributes: structuredClone(item) };
     }

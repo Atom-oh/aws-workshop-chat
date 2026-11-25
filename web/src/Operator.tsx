@@ -4,6 +4,7 @@ import { avatarColor, avatarInitials, displayName } from "./format";
 import Markdown from "./Markdown";
 import { COLORS } from "./theme";
 import Composer from "./Composer";
+import EditBox, { EditedMark } from "./EditBox";
 import Resizer from "./Resizer";
 import Attachment from "./Attachment";
 import { type PendingAttachment, uploadFile, AttachmentChips } from "./media";
@@ -220,6 +221,10 @@ function QuestionsView({
 
 // ---------- Thread panel ----------
 
+// The operator session's participantId is always this literal (see /api/login/id in
+// app/src/routes/auth.ts), so "is this my message" needs no session prop here.
+const OPERATOR_ID = "operator";
+
 function ThreadPanel({ channel, ulid, message, onClose, width, onResize, initialMsgUlid, onCopyLink, onError }: {
   channel: string; ulid: string; message: Message; onClose: () => void; width: number; onResize: (deltaX: number) => void;
   initialMsgUlid?: string | null; onCopyLink: (ulid: string) => void; onError: (message: string) => void;
@@ -236,8 +241,19 @@ function ThreadPanel({ channel, ulid, message, onClose, width, onResize, initial
   // Otherwise a file picked while replying to one thread is still queued if the operator
   // switches to another thread before sending — and would get attached to the wrong reply.
   useEffect(() => { setAttachments([]); }, [ulid]);
+  const [editingUlid, setEditingUlid] = useState<string | null>(null);
 
   const highlighted = useHighlight([message, ...replies], initialMsgUlid);
+
+  async function saveReplyEdit(replyUlid: string, body: string) {
+    try {
+      const { message: updated } = await api.editMessage(channel, replyUlid, body, ulid);
+      setReplies((prev) => prev.map((r) => (r.sk === updated.sk ? { ...r, body: updated.body, editedAt: updated.editedAt } : r)));
+      setEditingUlid(null);
+    } catch (err: any) {
+      onError(err.message);
+    }
+  }
 
   async function send() {
     if (!draft.trim() && attachments.length === 0) return;
@@ -280,12 +296,20 @@ function ThreadPanel({ channel, ulid, message, onClose, width, onResize, initial
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
                     <span style={{ fontSize: 12.5, fontWeight: 500, overflowWrap: "anywhere" }}>{displayName(r.participantId, r.displayName, locale)}</span>
                     <span style={{ fontSize: 11, color: COLORS.fg4, fontFamily: "ui-monospace,Menlo,monospace" }}>{timeLabel(r.createdAt, locale)}</span>
+                    {r.editedAt && <EditedMark />}
                   </div>
                   <div style={{ fontSize: 13.5, lineHeight: 1.6, color: COLORS.fg2 }}>
-                    <Markdown text={r.body} />
+                    {editingUlid === rUlid
+                      ? <EditBox initial={r.body} onSave={(body) => saveReplyEdit(rUlid, body)} onCancel={() => setEditingUlid(null)} />
+                      : <Markdown text={r.body} />}
                     {r.media.map((key) => <Attachment key={key} mediaKey={key} />)}
                   </div>
-                  <button onClick={() => onCopyLink(rUlid)} style={{ marginTop: 4, border: "none", background: "transparent", color: COLORS.fg4, fontSize: 11, cursor: "pointer", padding: 0 }}>🔗 {t("링크 복사")}</button>
+                  <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+                    {r.participantId === OPERATOR_ID && editingUlid !== rUlid && (
+                      <button onClick={() => setEditingUlid(rUlid)} style={{ border: "none", background: "transparent", color: COLORS.fg4, fontSize: 11, cursor: "pointer", padding: 0 }}>{t("수정")}</button>
+                    )}
+                    <button onClick={() => onCopyLink(rUlid)} style={{ border: "none", background: "transparent", color: COLORS.fg4, fontSize: 11, cursor: "pointer", padding: 0 }}>🔗 {t("링크 복사")}</button>
+                  </div>
                 </div>
               </div>
             );
@@ -311,8 +335,8 @@ function ThreadPanel({ channel, ulid, message, onClose, width, onResize, initial
 
 // ---------- Channel view ----------
 
-function ChannelView({ slug, name, archived, onOpenThread, initialThreadUlid, initialMsgUlid, onCopyLink, onError }: {
-  slug: string; name: string; archived: boolean; onOpenThread: (m: Message) => void;
+function ChannelView({ slug, name, archived, onOpenThread, onEdited, initialThreadUlid, initialMsgUlid, onCopyLink, onError }: {
+  slug: string; name: string; archived: boolean; onOpenThread: (m: Message) => void; onEdited: (m: Message) => void;
   initialThreadUlid?: string | null; initialMsgUlid?: string | null; onCopyLink: (ulid: string) => void; onError: (message: string) => void;
 }) {
   const { locale, t } = useLocale();
@@ -321,7 +345,19 @@ function ChannelView({ slug, name, archived, onOpenThread, initialThreadUlid, in
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
   const restoredThreadRef = useRef(false);
+  const [editingUlid, setEditingUlid] = useState<string | null>(null);
   const highlighted = useHighlight(messages, initialMsgUlid);
+
+  async function saveEdit(ulid: string, body: string) {
+    try {
+      const { message: updated } = await api.editMessage(slug, ulid, body);
+      setMessages((prev) => prev.map((m) => (m.sk === updated.sk ? { ...m, body: updated.body, editedAt: updated.editedAt } : m)));
+      onEdited(updated);
+      setEditingUlid(null);
+    } catch (err: any) {
+      onError(err.message);
+    }
+  }
 
   useEffect(() => {
     api.messages(slug).then((r) => {
@@ -343,6 +379,7 @@ function ChannelView({ slug, name, archived, onOpenThread, initialThreadUlid, in
       if (data.type === "message" && !data.message.threadId) setMessages((prev) => [...prev, data.message]);
       else if (data.type === "deleted") setMessages((prev) => prev.map((m) => (m.sk === `MSG#${data.ulid}` ? { ...m, deleted: true } : m)));
       else if (data.type === "threadReplyCount") setMessages((prev) => prev.map((m) => (m.sk === `MSG#${data.rootUlid}` ? { ...m, replyCount: data.replyCount } : m)));
+      else if (data.type === "edited" && !data.threadId) setMessages((prev) => prev.map((m) => (m.sk === `MSG#${data.ulid}` ? { ...m, body: data.body, editedAt: data.editedAt } : m)));
     };
     wsRef.current = ws;
     return () => ws.close();
@@ -383,12 +420,15 @@ function ChannelView({ slug, name, archived, onOpenThread, initialThreadUlid, in
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
                   <span style={{ fontSize: 13.5, fontWeight: 700, overflowWrap: "anywhere" }}>{displayName(m.participantId, m.displayName, locale)}</span>
                   <span style={{ fontSize: 11, color: COLORS.fg4, fontFamily: "ui-monospace,Menlo,monospace" }}>{timeLabel(m.createdAt, locale)}</span>
+                  {m.editedAt && <EditedMark />}
                   {m.kind === "question" && m.status === "open" && (
                     <span style={{ height: 18, padding: "0 7px", borderRadius: 6, background: "rgba(var(--c-accent-rgb),.16)", color: COLORS.orangeText, font: "700 10.5px/18px inherit" }}>{t("미해결")}</span>
                   )}
                 </div>
                 <div style={{ fontSize: 14, lineHeight: 1.6, color: COLORS.text }}>
-                  <Markdown text={m.body} />
+                  {editingUlid === ulid
+                    ? <EditBox initial={m.body} onSave={(body) => saveEdit(ulid, body)} onCancel={() => setEditingUlid(null)} />
+                    : <Markdown text={m.body} />}
                   {m.media.map((key) => <Attachment key={key} mediaKey={key} />)}
                 </div>
                 <div style={{ display: "flex", gap: 12, marginTop: 4, flexWrap: "wrap" }}>
@@ -398,6 +438,11 @@ function ChannelView({ slug, name, archived, onOpenThread, initialThreadUlid, in
                   >
                     {m.replyCount ? `💬 ${m.replyCount} ${locale === "en" ? (m.replyCount === 1 ? "reply" : "replies") : "개의 댓글"}` : t("스레드")}
                   </button>
+                  {m.participantId === OPERATOR_ID && !archived && editingUlid !== ulid && (
+                    <button onClick={() => setEditingUlid(ulid)} style={{ border: "none", background: "transparent", color: COLORS.fg4, fontSize: 12.5, cursor: "pointer", padding: 0, font: "inherit" }}>
+                      {t("수정")}
+                    </button>
+                  )}
                   <button onClick={() => onCopyLink(ulid)} style={{ border: "none", background: "transparent", color: COLORS.fg4, fontSize: 12.5, cursor: "pointer", padding: 0, font: "inherit" }}>
                     🔗 {t("링크 복사")}
                   </button>
@@ -1100,6 +1145,8 @@ export default function Operator({ onLogout }: { onLogout: () => void }) {
           {view === "channel" && activeChannel && (
             <ChannelView
               slug={activeChannel} name={channelName(activeChannel)} archived={channelArchived(activeChannel)} onOpenThread={setChannelThread}
+              // Keeps an already-open thread panel's root (a snapshot, not a lookup) in step with the edit.
+              onEdited={(m) => setChannelThread((cur) => (cur && cur.sk === m.sk ? { ...cur, body: m.body, editedAt: m.editedAt } : cur))}
               initialThreadUlid={initialThreadUlid} initialMsgUlid={initialMsgUlid}
               onCopyLink={(ulid) => copyLink(buildMessageLink({ view: "channel", channel: activeChannel, msg: ulid }))}
               onError={showToast}

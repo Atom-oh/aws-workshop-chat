@@ -4,6 +4,7 @@ import { avatarColor, avatarInitials, displayName } from "./format";
 import Markdown from "./Markdown";
 import { COLORS } from "./theme";
 import Composer from "./Composer";
+import EditBox, { EditedMark } from "./EditBox";
 import Attachment from "./Attachment";
 import Resizer from "./Resizer";
 import { useResizableWidth } from "./useResizableWidth";
@@ -17,6 +18,13 @@ type Theme = "midnight" | "projector";
 
 function timeLabel(iso: string, locale: "ko" | "en" = "ko") {
   return new Date(iso).toLocaleTimeString(locale === "en" ? "en-US" : "ko-KR", { hour: "2-digit", minute: "2-digit" });
+}
+
+interface EditEvent {
+  ulid: string;
+  threadId?: string;
+  body: string;
+  editedAt: string;
 }
 
 interface AiEntry {
@@ -47,7 +55,7 @@ function NavItem({ icon, iconColor, label, count, active, onClick }: any) {
   );
 }
 
-function MessageRow({ m, children }: { m: Message; children?: React.ReactNode }) {
+function MessageRow({ m, editor, children }: { m: Message; editor?: React.ReactNode; children?: React.ReactNode }) {
   const { locale, t } = useLocale();
   return (
     <div style={{ display: "flex", gap: 11, padding: "10px 20px", position: "relative" }} className="msg-row-dark">
@@ -58,6 +66,7 @@ function MessageRow({ m, children }: { m: Message; children?: React.ReactNode })
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3, flexWrap: "wrap" }}>
           <span style={{ fontSize: 13.5, fontWeight: 700, overflowWrap: "anywhere" }}>{displayName(m.participantId, m.displayName, locale)}</span>
           <span style={{ fontSize: 11, color: "rgba(var(--c-w),.3)", fontFamily: "ui-monospace,Menlo,monospace" }}>{timeLabel(m.createdAt, locale)}</span>
+          {m.editedAt && <EditedMark />}
           {m.kind === "question" && (
             <span style={{
               display: "inline-flex", alignItems: "center", gap: 5, height: 18, padding: "0 7px", borderRadius: 6,
@@ -68,7 +77,7 @@ function MessageRow({ m, children }: { m: Message; children?: React.ReactNode })
             </span>
           )}
         </div>
-        <div style={{ fontSize: 14, lineHeight: 1.6, color: "rgba(var(--c-w),.92)" }}><Markdown text={m.body} /></div>
+        {editor ?? <div style={{ fontSize: 14, lineHeight: 1.6, color: "rgba(var(--c-w),.92)" }}><Markdown text={m.body} /></div>}
         {m.media?.map((key) => <Attachment key={key} mediaKey={key} />)}
         {children}
       </div>
@@ -76,8 +85,8 @@ function MessageRow({ m, children }: { m: Message; children?: React.ReactNode })
   );
 }
 
-function ThreadPanel({ slug, message, onClose, width, onResize, initialMsgUlid, onCopyLink, onError }: {
-  slug: string; message: Message; onClose: () => void; width: number; onResize: (deltaX: number) => void;
+function ThreadPanel({ slug, message, selfId, lastEdit, onClose, width, onResize, initialMsgUlid, onCopyLink, onError }: {
+  slug: string; message: Message; selfId: string; lastEdit: EditEvent | null; onClose: () => void; width: number; onResize: (deltaX: number) => void;
   initialMsgUlid?: string | null; onCopyLink: (ulid: string) => void; onError: (message: string) => void;
 }) {
   const { locale, t } = useLocale();
@@ -90,8 +99,26 @@ function ThreadPanel({ slug, message, onClose, width, onResize, initialMsgUlid, 
     setReplies((await api.threadReplies(rootUlid)).replies);
   }
   useEffect(() => { load(); }, [rootUlid]);
+  const [editingUlid, setEditingUlid] = useState<string | null>(null);
+
+  // The channel socket lives in Chat; it forwards reply edits (ours from another tab, or anyone
+  // else's) so an open thread does not keep showing the old text.
+  useEffect(() => {
+    if (!lastEdit || lastEdit.threadId !== rootUlid) return;
+    setReplies((prev) => prev.map((r) => (r.sk === `MSG#${lastEdit.ulid}` ? { ...r, body: lastEdit.body, editedAt: lastEdit.editedAt } : r)));
+  }, [lastEdit, rootUlid]);
 
   const highlighted = useHighlight([message, ...replies], initialMsgUlid);
+
+  async function saveReplyEdit(ulid: string, body: string) {
+    try {
+      const { message: updated } = await api.editMessage(slug, ulid, body, rootUlid);
+      setReplies((prev) => prev.map((r) => (r.sk === updated.sk ? { ...r, body: updated.body, editedAt: updated.editedAt } : r)));
+      setEditingUlid(null);
+    } catch (err: any) {
+      onError(err.message);
+    }
+  }
 
   async function send() {
     if (!draft.trim() && attachments.length === 0) return;
@@ -130,10 +157,18 @@ function ThreadPanel({ slug, message, onClose, width, onResize, initialMsgUlid, 
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
                     <span style={{ fontSize: 12.5, fontWeight: 500, overflowWrap: "anywhere" }}>{displayName(r.participantId, r.displayName, locale)}</span>
                     <span style={{ fontSize: 11, color: "rgba(var(--c-w),.3)", fontFamily: "ui-monospace,Menlo,monospace" }}>{timeLabel(r.createdAt, locale)}</span>
+                    {r.editedAt && <EditedMark />}
                   </div>
-                  <div style={{ fontSize: 13.5, lineHeight: 1.6, color: "rgba(var(--c-w),.85)" }}><Markdown text={r.body} /></div>
+                  {editingUlid === rUlid
+                    ? <EditBox initial={r.body} onSave={(body) => saveReplyEdit(rUlid, body)} onCancel={() => setEditingUlid(null)} />
+                    : <div style={{ fontSize: 13.5, lineHeight: 1.6, color: "rgba(var(--c-w),.85)" }}><Markdown text={r.body} /></div>}
                   {r.media?.map((key) => <Attachment key={key} mediaKey={key} />)}
-                  <button onClick={() => onCopyLink(rUlid)} style={{ marginTop: 4, border: "none", background: "transparent", color: "rgba(var(--c-w),.35)", fontSize: 11, cursor: "pointer", padding: 0 }}>🔗 {t("링크 복사")}</button>
+                  <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+                    {r.participantId === selfId && editingUlid !== rUlid && (
+                      <button onClick={() => setEditingUlid(rUlid)} style={{ border: "none", background: "transparent", color: "rgba(var(--c-w),.35)", fontSize: 11, cursor: "pointer", padding: 0 }}>{t("수정")}</button>
+                    )}
+                    <button onClick={() => onCopyLink(rUlid)} style={{ border: "none", background: "transparent", color: "rgba(var(--c-w),.35)", fontSize: 11, cursor: "pointer", padding: 0 }}>🔗 {t("링크 복사")}</button>
+                  </div>
                 </div>
               </div>
             );
@@ -239,6 +274,8 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [asQuestion, setAsQuestion] = useState(false);
   const [selectedUlid, setSelectedUlid] = useState<string | null>(initialParams.get("thread"));
+  const [editingUlid, setEditingUlid] = useState<string | null>(null);
+  const [lastEdit, setLastEdit] = useState<EditEvent | null>(null);
   const initialMsgUlid = initialParams.get("msg");
   const [aiQuery, setAiQuery] = useState("");
   const [aiHistory, setAiHistory] = useState<AiEntry[]>([]);
@@ -333,6 +370,9 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
             setMessages((prev) => prev.map((m) => (m.sk === `MSG#${data.ulid}` ? { ...m, deleted: true } : m)));
           } else if (data.type === "threadReplyCount") {
             setMessages((prev) => prev.map((m) => (m.sk === `MSG#${data.rootUlid}` ? { ...m, replyCount: data.replyCount } : m)));
+          } else if (data.type === "edited") {
+            if (data.threadId) setLastEdit(data);
+            else setMessages((prev) => prev.map((m) => (m.sk === `MSG#${data.ulid}` ? { ...m, body: data.body, editedAt: data.editedAt } : m)));
           }
         };
         ws.onclose = () => {
@@ -362,6 +402,16 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
       setDraft("");
       setAttachments([]);
       setMessages((await api.messages(active)).messages);
+    } catch (err: any) {
+      showToast(err.message);
+    }
+  }
+
+  async function saveEdit(ulid: string, body: string) {
+    try {
+      const { message: updated } = await api.editMessage(active, ulid, body);
+      setMessages((prev) => prev.map((m) => (m.sk === updated.sk ? { ...m, body: updated.body, editedAt: updated.editedAt } : m)));
+      setEditingUlid(null);
     } catch (err: any) {
       showToast(err.message);
     }
@@ -539,7 +589,7 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
                       className={mainHighlighted === ulid ? "msg-flash" : undefined}
                       style={{ cursor: "pointer", background: selectedUlid === ulid ? "rgba(var(--c-accent-rgb),.055)" : "transparent" }}
                     >
-                      <MessageRow m={m}>
+                      <MessageRow m={m} editor={editingUlid === ulid ? <EditBox initial={m.body} onSave={(body) => saveEdit(ulid, body)} onCancel={() => setEditingUlid(null)} /> : undefined}>
                         <div style={{ display: "flex", gap: 12, marginTop: 6, flexWrap: "wrap" }}>
                           <button onClick={(e) => { e.stopPropagation(); setSelectedUlid(ulid); }} style={{ border: "none", background: "transparent", color: COLORS.orange, fontSize: 12.5, cursor: "pointer", padding: 0 }}>
                             {m.replyCount ? `💬 ${m.replyCount} ${locale === "en" ? (m.replyCount === 1 ? "reply" : "replies") : "개의 댓글"}` : t("스레드")}
@@ -552,6 +602,9 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
                           )}
                           {session.role === "operator" && active !== ANNOUNCEMENTS_SLUG && (
                             <button onClick={(e) => { e.stopPropagation(); postAsAnnouncement(m); }} style={{ border: "none", background: "transparent", color: "rgba(var(--c-w),.6)", fontSize: 12.5, cursor: "pointer", padding: 0 }}>{t("📌 공지로 올리기")}</button>
+                          )}
+                          {m.participantId === session.participantId && editingUlid !== ulid && (
+                            <button onClick={(e) => { e.stopPropagation(); setEditingUlid(ulid); }} style={{ border: "none", background: "transparent", color: "rgba(var(--c-w),.4)", fontSize: 12.5, cursor: "pointer", padding: 0 }}>{t("수정")}</button>
                           )}
                           {session.role === "operator" && (
                             <button onClick={(e) => { e.stopPropagation(); api.deleteMessage(active, ulid); }} style={{ border: "none", background: "transparent", color: "rgba(var(--c-w),.4)", fontSize: 12.5, cursor: "pointer", padding: 0 }}>{t("삭제")}</button>
@@ -597,7 +650,7 @@ export default function Chat({ session, onLogout }: { session: Session; onLogout
 
         {selected && view === "channel" && (
           <ThreadPanel
-            slug={active} message={selected} onClose={() => setSelectedUlid(null)} width={threadWidth} onResize={resizeThread}
+            slug={active} message={selected} selfId={session.participantId} lastEdit={lastEdit} onClose={() => setSelectedUlid(null)} width={threadWidth} onResize={resizeThread}
             initialMsgUlid={initialMsgUlid}
             onCopyLink={(ulid) => copyLink(buildMessageLink({ channel: active, thread: selectedUlid ?? undefined, msg: ulid }))}
             onError={showToast}
