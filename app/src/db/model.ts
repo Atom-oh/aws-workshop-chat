@@ -23,6 +23,7 @@ export interface MessageItem {
   deleted: boolean;
   media: string[];
   createdAt: string; // ISO, derived from ulid at write time for convenience
+  editedAt?: string; // ISO, set only once the author has edited the body
   replyCount?: number; // denormalized count of thread replies, bumped in postThreadReply
 }
 

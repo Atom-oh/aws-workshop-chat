@@ -330,6 +330,36 @@ export async function listQuestionsByStatus(status: QuestionStatus) {
   return items.filter((i: any) => i.messageId);
 }
 
+// A thread reply lives under its root's THREAD# partition, not the channel's, so an edit has to
+// be told which one it is addressing — the reply's own ulid alone does not locate it.
+function messageKey(channel: string, messageUlid: string, threadId?: string) {
+  return threadId ? keys.threadReply(threadId, messageUlid) : keys.message(channel, messageUlid);
+}
+
+export async function getMessageOrReply(channel: string, messageUlid: string, threadId?: string): Promise<MessageItem | undefined> {
+  const res = await ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: messageKey(channel, messageUlid, threadId) }));
+  return res.Item as MessageItem | undefined;
+}
+
+// The QSTATUS# shadow item's own `body` copy is deliberately left alone: nothing reads it
+// (GET /api/questions and the export both hydrate from the message item), and upvote/resolve
+// rewrite it from the message item anyway.
+export async function editMessageBody(channel: string, messageUlid: string, body: string, threadId?: string): Promise<MessageItem> {
+  const res = await ddb.send(
+    new UpdateCommand({
+      TableName: TABLE_NAME,
+      Key: messageKey(channel, messageUlid, threadId),
+      UpdateExpression: "SET body = :body, editedAt = :editedAt",
+      // UpdateItem upserts by default — without this an edit racing a hard delete (or a bad
+      // ulid) would create a body-only phantom message.
+      ConditionExpression: "attribute_exists(pk)",
+      ExpressionAttributeValues: { ":body": body, ":editedAt": new Date().toISOString() },
+      ReturnValues: "ALL_NEW",
+    }),
+  );
+  return res.Attributes as MessageItem;
+}
+
 export async function softDeleteMessage(channel: string, messageUlid: string) {
   await ddb.send(
     new UpdateCommand({

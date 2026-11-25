@@ -15,6 +15,8 @@ import {
   resolveQuestion,
   listQuestionsByStatus,
   getMessage,
+  getMessageOrReply,
+  editMessageBody,
   softDeleteMessage,
   getParticipant,
   touchParticipant,
@@ -155,6 +157,37 @@ export async function chatRoutes(app: FastifyInstance) {
     const shadows = await listQuestionsByStatus(status);
     const hydrated = await Promise.all(shadows.map((s: any) => getMessage(s.channel, s.messageId)));
     reply.send({ questions: hydrated.filter((m) => m && !m.deleted) });
+  });
+
+  // Body-only edit by the message's own author. Attachments, kind and question status are not
+  // editable; operators moderate other people's messages by deleting, not rewriting them.
+  app.patch("/api/channels/:slug/messages/:ulid", async (req, reply) => {
+    const session = requireSession(req, reply);
+    if (!session) return;
+
+    const participant = await getParticipant(session.participantId);
+    if (participant?.blocked) return reply.code(403).send({ error: "blocked by operator" });
+
+    const { slug, ulid } = req.params as { slug: string; ulid: string };
+    const { body, threadId } = (req.body ?? {}) as { body?: unknown; threadId?: unknown };
+    if (typeof body !== "string" || !body.trim() || body.length > MAX_BODY_LENGTH) {
+      return reply.code(400).send({ error: `body required, max ${MAX_BODY_LENGTH} chars` });
+    }
+    const rootUlid = typeof threadId === "string" && threadId ? threadId : undefined;
+
+    const current = await getMessageOrReply(slug, ulid, rootUlid);
+    // The channel check matters for replies: their key is THREAD#<root>, which does not carry
+    // the channel, so without it a reply could be edited (and broadcast) through another slug.
+    if (!current || current.deleted || current.channel !== slug) {
+      return reply.code(404).send({ error: "message not found" });
+    }
+    if (current.participantId !== session.participantId) {
+      return reply.code(403).send({ error: "only the author can edit a message" });
+    }
+
+    const message = await editMessageBody(slug, ulid, body, rootUlid);
+    broadcast(slug, { type: "edited", ulid, threadId: rootUlid, body: message.body, editedAt: message.editedAt });
+    reply.send({ message });
   });
 
   app.delete("/api/channels/:slug/messages/:ulid", async (req, reply) => {

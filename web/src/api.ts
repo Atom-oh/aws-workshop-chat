@@ -43,6 +43,7 @@ export interface Message {
   deleted: boolean;
   media: string[];
   createdAt: string;
+  editedAt?: string;
   replyCount?: number;
 }
 
@@ -143,6 +144,12 @@ export const api = {
     req<{ upvotes: number; upvoted: boolean }>(`/api/channels/${slug}/messages/${ulid}/upvote`, { method: "POST" }),
   resolve: (slug: string, ulid: string) =>
     req(`/api/channels/${slug}/messages/${ulid}/resolve`, { method: "POST" }),
+  // threadId is required when the target is a thread reply (it lives under its root's partition).
+  editMessage: (slug: string, ulid: string, body: string, threadId?: string) =>
+    req<{ message: Message }>(`/api/channels/${slug}/messages/${ulid}`, {
+      method: "PATCH",
+      body: JSON.stringify({ body, threadId }),
+    }),
   deleteMessage: (slug: string, ulid: string) =>
     req(`/api/channels/${slug}/messages/${ulid}`, { method: "DELETE" }),
   questions: (status: "open" | "resolved") => req<{ questions: Message[] }>(`/api/questions?status=${status}`),
